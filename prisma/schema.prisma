@@ -92,6 +92,7 @@ model ExtraOrder {
   netAmount       Decimal  @default(0)
   travelCost      Decimal  @default(0)
   extraCost       Decimal  @default(0)
+  minutes         Int      @default(0)
   extraCostDescription String?
   orderNumber     String?
   status          String   @default("OPEN")

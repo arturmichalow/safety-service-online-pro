@@ -11,6 +11,7 @@ function data(b){
     netAmount:Number(b.netAmount||0),
     travelCost:Number(b.travelCost||0),
     extraCost:Number(b.extraCost||0),
+    minutes:Number(b.minutes||0),
     extraCostDescription:b.extraCostDescription||null,
     orderNumber:b.orderNumber||null,
     status:b.status||'OPEN'
