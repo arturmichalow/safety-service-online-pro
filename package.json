@@ -1,0 +1,39 @@
+{
+  "name": "safety-service-online-pro",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "seed": "node prisma/seed.js",
+    "backup": "node scripts/backup.js",
+    "electron": "electron desktop/main.js",
+    "desktop:build": "electron-builder"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "prisma": "^5.22.0",
+    "bcryptjs": "^2.4.3",
+    "exceljs": "^4.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "jspdf": "^2.5.2",
+    "next": "^14.2.16",
+    "openai": "^4.68.4",
+    "pg": "^8.13.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.13.3"
+  },
+  "devDependencies": {
+    "electron": "^33.0.2",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "pl.safetyservice.rozliczanie",
+    "productName": "Safety Service Rozliczanie",
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

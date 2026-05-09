@@ -1,0 +1,3 @@
+import { prisma } from '../../../../lib/prisma';
+import { currentUser } from '../../../../lib/auth';
+export async function GET(){const user=currentUser();if(!user||user.role!=='ADMIN')return Response.json({error:'Forbidden'},{status:403});const entries=await prisma.workEntry.findMany({include:{company:true,user:true},orderBy:{date:'desc'}});const csv=['Data;Firma;Użytkownik;Czynność;Opis;Minuty;Dojazd'].concat(entries.map(e=>`${e.date.toISOString().slice(0,10)};${e.company.name};${e.user.name};${e.title};${e.description||''};${e.minutes};${e.travelMinutes||0}`)).join('\n');return new Response(csv,{headers:{'Content-Type':'text/csv;charset=utf-8','Content-Disposition':'attachment; filename="raport.csv"'}})}

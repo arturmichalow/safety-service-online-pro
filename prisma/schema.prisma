@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  WORKER
+}
+
+enum CompanyStatus {
+  ACTIVE
+  PAUSED
+  INACTIVE
+}
+
+enum BillingType {
+  MONTHLY
+  ONE_TIME
+  HOURLY
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  name         String
+  passwordHash String
+  role         Role        @default(WORKER)
+  active       Boolean     @default(true)
+  permissions  Json?
+  workEntries  WorkEntry[]
+  auditLogs    AuditLog[]
+  assignedCompanies Company[]
+  createdAt    DateTime    @default(now())
+}
+
+model Company {
+  id            String        @id @default(cuid())
+  name          String
+  nip           String?
+  address       String?
+  contactPerson String?
+  phone         String?
+  email         String?
+  serviceType   String?
+  status        CompanyStatus @default(ACTIVE)
+  orderNumber   String?
+  netAmount     Decimal       @default(0)
+  billingType   BillingType   @default(MONTHLY)
+  travelCost    Decimal       @default(0)
+  extraCost     Decimal       @default(0)
+  assignedUserId String?
+  assignedUser   User?        @relation(fields: [assignedUserId], references: [id])
+  workEntries   WorkEntry[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model WorkEntry {
+  id          String   @id @default(cuid())
+  date        DateTime
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  orderNumber String?
+  type        String
+  title       String
+  description String?
+  minutes     Int
+  travelMinutes Int @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+}

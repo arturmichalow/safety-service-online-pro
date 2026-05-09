@@ -1,0 +1,3 @@
+import { prisma } from '../../../lib/prisma';
+import { currentUser, hashPassword } from '../../../lib/auth';
+export async function POST(req){const user=currentUser(); if(!user||user.role!=='ADMIN')return Response.json({error:'Forbidden'},{status:403}); const b=await req.json(); const created=await prisma.user.create({data:{name:b.name,email:b.email,role:b.role||'WORKER',active:true,permissions:b.permissions||{},passwordHash:await hashPassword(b.password)},select:{id:true,name:true,email:true,role:true,active:true,permissions:true}}); await prisma.auditLog.create({data:{userId:user.id,action:'CREATE',entity:'User',entityId:created.id,after:created}}); return Response.json(created)}

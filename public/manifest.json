@@ -1,0 +1,9 @@
+{
+  "name": "Safety Service Rozliczanie",
+  "short_name": "Safety Service",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#132734",
+  "theme_color": "#ff5a14",
+  "icons": []
+}
