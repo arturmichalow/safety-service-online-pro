@@ -73,6 +73,8 @@ model WorkEntry {
   description String?
   minutes     Int
   travelMinutes Int @default(0)
+  additionalCost Decimal @default(0)
+  additionalCostDescription String?
   notes       String?
   createdAt   DateTime @default(now())
 }
