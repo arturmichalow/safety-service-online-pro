@@ -1,5 +1,60 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '../../lib/prisma';
 import { verifyPassword, setSession } from '../../lib/auth';
-async function login(formData) { 'use server'; const email = String(formData.get('email') || ''); const password = String(formData.get('password') || ''); const user = await prisma.user.findUnique({ where: { email } }); if (!user || !user.active) return; const ok = await verifyPassword(password, user.passwordHash); if (!ok) return; setSession(user); redirect('/'); }
-export default function LoginPage() { return <div className="login"><form className="loginBox" action={login}><img src="/logo.png" className="logo" style={{height:64, marginBottom:20}} alt="Safety Service" /><h1>Logowanie</h1><input name="email" placeholder="Email" defaultValue="admin@safety-service.pl" /><input name="password" type="password" placeholder="Hasło" defaultValue="admin123" /><button className="orange" style={{width:'100%', marginTop:10}}>Zaloguj</button><p className="muted">Admin: admin@safety-service.pl / admin123<br/>Pracownik: pracownik@safety-service.pl / praca123</p></form></div>; }
+
+async function login(formData) {
+  'use server';
+
+  const email = String(formData.get('email') || '');
+  const password = String(formData.get('password') || '');
+
+  const user = await prisma.user.findUnique({
+    where: { email }
+  });
+
+  if (!user || !user.active) return;
+
+  const ok = await verifyPassword(password, user.passwordHash);
+
+  if (!ok) return;
+
+  setSession(user);
+
+  redirect('/');
+}
+
+export default function LoginPage() {
+  return (
+    <div className="login">
+      <form className="loginBox" action={login}>
+        <img
+          src="/logo.png"
+          className="logo"
+          style={{ height: 64, marginBottom: 20 }}
+          alt="Safety Service"
+        />
+
+        <h1>Logowanie</h1>
+
+        <input
+          name="email"
+          type="email"
+          placeholder="Adres email"
+        />
+
+        <input
+          name="password"
+          type="password"
+          placeholder="Hasło"
+        />
+
+        <button
+          className="orange"
+          style={{ width: '100%', marginTop: 10 }}
+        >
+          Zaloguj
+        </button>
+      </form>
+    </div>
+  );
+}
