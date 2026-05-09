@@ -57,6 +57,7 @@ model Company {
   assignedUserId String?
   assignedUser   User?        @relation(fields: [assignedUserId], references: [id])
   workEntries   WorkEntry[]
+  extraOrders   ExtraOrder[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
@@ -78,6 +79,24 @@ model WorkEntry {
   additionalCostDescription String?
   notes       String?
   createdAt   DateTime @default(now())
+}
+
+model ExtraOrder {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  date            DateTime @default(now())
+  title           String
+  type            String
+  description     String?
+  netAmount       Decimal  @default(0)
+  travelCost      Decimal  @default(0)
+  extraCost       Decimal  @default(0)
+  extraCostDescription String?
+  orderNumber     String?
+  status          String   @default("OPEN")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model AuditLog {

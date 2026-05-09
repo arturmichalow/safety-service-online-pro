@@ -24,3 +24,12 @@ Po wgraniu ZIP do GitHub Railway zrobi deploy.
 Konta:
 admin@safety-service.pl / admin123
 pracownik@safety-service.pl / praca123
+
+
+AKTUALIZACJA v6.5 - ZLECENIA DODATKOWE
+1. Po wgraniu plikow do GitHub Railway zbuduje aplikacje.
+2. Poniewaz doszedl nowy model ExtraOrder, w Railway ustaw Pre-deploy Command:
+   ./node_modules/.bin/prisma generate && ./node_modules/.bin/prisma db push --accept-data-loss && npm run seed
+3. Build Command ma zostac: npm run build
+4. Po wdrozeniu pojawi sie nowa zakladka: Zlecenia dodatkowe.
+5. Rentownosc liczy teraz: obsluga miesieczna + zlecenia dodatkowe - koszty dojazdow - dodatkowe koszty - koszt czasu pracy.

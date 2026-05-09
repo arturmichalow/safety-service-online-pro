@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
-const adminPerms={dashboard:true,clients:true,employees:true,work:true,ai:true,charts:true,profitCharts:true,import:true,export:true,security:true,users:true,pwa:true};
+const adminPerms={dashboard:true,clients:true,employees:true,work:true,extraOrders:true,ai:true,charts:true,profitCharts:true,import:true,export:true,security:true,users:true,pwa:true};
 const workerPerms={work:true,pwa:true};
 const employees = ['Artur Michałów','Kamil Ciałowicz','Grzegorz Kuczaj','Paulina Stankiewicz','Paweł Sereda','Arkadiusz Źrebiec','Paweł Pędrak'];
 function emailFor(name){return name.toLowerCase().replaceAll(' ','.').normalize('NFD').replace(/[\u0300-\u036f]/g,'')+'@safety-service.pl'}
@@ -16,6 +16,7 @@ async function main(){
   const admin=await upsert('admin@safety-service.pl','Administrator BHP','admin123','ADMIN',adminPerms);
   await upsert('pracownik@safety-service.pl','Pracownik','praca123','WORKER',workerPerms);
   for(const n of employees){await upsert(emailFor(n),n,'praca123',n==='Artur Michałów'?'ADMIN':'WORKER',n==='Artur Michałów'?adminPerms:workerPerms)}
+  await prisma.extraOrder.deleteMany({});
   await prisma.workEntry.deleteMany({});
   await prisma.company.deleteMany({});
   const users=await prisma.user.findMany();
