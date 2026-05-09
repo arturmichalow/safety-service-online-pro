@@ -53,6 +53,7 @@ model Company {
   billingType   BillingType   @default(MONTHLY)
   travelCost    Decimal       @default(0)
   extraCost     Decimal       @default(0)
+  extraCostDescription String?
   assignedUserId String?
   assignedUser   User?        @relation(fields: [assignedUserId], references: [id])
   workEntries   WorkEntry[]
