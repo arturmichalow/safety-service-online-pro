@@ -22,7 +22,7 @@ export default function Dashboard({user}){
  const [selectedCompany,setSelectedCompany]=useState(null);
  const [editUser,setEditUser]=useState(null);
  const [ai,setAi]=useState('');
- const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',type:'dokumentacja',title:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:''});
+ const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',type:'dokumentacja',title:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
  const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',type:'inne',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:'',status:'OPEN'});
  const [training,setTraining]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',time:'1:00',unitAmount:'109',peopleCount:'1',netAmount:'109',extraCostDescription:'',description:'',status:'DONE'});
  async function load(){const r=await fetch('/api/data',{cache:'no-store'});const j=await r.json();setData({...j,extraOrders:j.extraOrders||[]});setSelectedCompany(prev=>prev?j.companies.find(c=>c.id===prev.id)||prev:j.companies?.[0]||null)}
@@ -74,13 +74,38 @@ export default function Dashboard({user}){
  async function addWork(){try{
   let companyId=form.companyId;
   const newCompanyName=String(form.newCompanyName||'').trim();
+  const minutes=parseTime(form.time);
+
+  // Jeśli pracownik wpisuje firmę spoza listy, traktujemy to jako zlecenie dodatkowe.
+  // Dzięki temu można wpisać kwotę za zlecenie i firma pojawi się w podsumowaniu.
   if(!companyId&&newCompanyName){
+    if(!form.time)return alert('Wpisz czas pracy.');
+    if(!form.netAmount)return alert('Wpisz kwotę za zlecenie dla nowej firmy.');
     const created=await jsonFetch('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newCompanyName,status:'ACTIVE',billingType:'ONE_TIME',netAmount:0,travelCost:0,extraCost:0})});
     companyId=created.id;
+    await jsonFetch('/api/extra-orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      companyId,
+      date:form.date,
+      title:form.description?.trim()||form.type||'Zlecenie z panelu pracownika',
+      type:form.type||'inne',
+      description:form.description||'',
+      netAmount:Number(form.netAmount||0),
+      travelCost:0,
+      extraCost:Number(form.additionalCost||0),
+      extraCostDescription:form.additionalCostDescription||null,
+      minutes,
+      orderNumber:form.orderNumber||null,
+      status:'DONE'
+    })});
+    setForm({...form,companyId:'',newCompanyName:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
+    await load();
+    alert('Dodano zlecenie dla nowej firmy i ujęto je w podsumowaniu.');
+    return;
   }
-  if(!companyId||!form.title||!form.time)return alert('Uzupełnij firmę albo wpisz nową firmę, czynność i czas.');
-  await jsonFetch('/api/work',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,companyId,minutes:parseTime(form.time),travelMinutes:parseTime(form.travelTime),additionalCost:Number(form.additionalCost||0),additionalCostDescription:form.additionalCostDescription})});
-  setForm({...form,companyId:'',newCompanyName:'',title:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:''});
+
+  if(!companyId||!form.time)return alert('Wybierz firmę albo wpisz nową firmę oraz czas.');
+  await jsonFetch('/api/work',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,companyId,title:form.description?.trim()||form.type,minutes,travelMinutes:parseTime(form.travelTime),additionalCost:Number(form.additionalCost||0),additionalCostDescription:form.additionalCostDescription})});
+  setForm({...form,companyId:'',newCompanyName:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
   await load();alert('Dodano wpis pracy.');
  }catch(err){alert(err.message)}}
  async function addExtraOrder(e){
@@ -138,7 +163,7 @@ export default function Dashboard({user}){
  {tab==='dashboard'&&<div className="panel"><h1>Podsumowanie</h1><div className="kpis"><div className="card">Firmy<h2>{data.companies.length}</h2></div><div className="card">Godziny<h2>{minToText(stats.totalMin)}</h2></div><div className="card">Przychód<h2>{money(stats.totalIncome)}</h2></div><div className="card">Najbardziej rentowny<h2>{stats.best?.name||'-'}</h2></div></div><SummaryTable rows={stats.rows}/></div>}
  {tab==='clients'&&<div className="panel"><div className="grid"><form className="card" onSubmit={saveCompany}><h2>Dodaj firmę</h2><input name="name" placeholder="Nazwa firmy" required/><input name="nip" placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/><input name="address" placeholder="Adres"/><input name="contactPerson" placeholder="Osoba kontaktowa"/><input name="phone" placeholder="Telefon"/><input name="email" placeholder="Email"/><input name="serviceType" placeholder="Typ obsługi"/><select name="assignedUserId"><option value="">Przypisz pracownika</option>{data.users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><select name="status"><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select><select name="billingType"><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select><input name="netAmount" type="number" placeholder="Kwota netto miesięcznie"/><input name="travelCost" type="number" placeholder="Koszt dojazdów"/><input name="extraCost" type="number" placeholder="Dodatkowe koszty"/><input name="extraCostDescription" placeholder="Opis dodatkowych kosztów / uwagi"/><button className="orange">Zapisz</button></form><div className="card"><h2>Baza firm</h2><div className="filterBar"><input placeholder="Szukaj firmy..." value={companySearch} onChange={e=>setCompanySearch(e.target.value)}/><select value={companySort} onChange={e=>setCompanySort(e.target.value)}><option value="name_asc">Nazwa A-Z</option><option value="name_desc">Nazwa Z-A</option><option value="money_desc">Największa kwota</option><option value="money_asc">Najmniejsza kwota</option></select><select value={companyStatus} onChange={e=>setCompanyStatus(e.target.value)}><option value="ALL">Wszystkie statusy</option><option value="ACTIVE">Aktywne</option><option value="PAUSED">Zawieszone</option><option value="INACTIVE">Nieaktywne</option></select></div><div className="muted">Widoczne firmy: {filteredCompanies.length} / {data.companies.length}</div><div className="tableWrap"><table><thead><tr><th>Status</th><th>Firma</th><th>NIP</th><th>Pracownik</th><th>Kwota miesięczna</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{filteredCompanies.map(c=><tr className="clickable" key={c.id} onClick={()=>setSelectedCompany(c)}><td><span className={'status '+c.status}></span></td><td>{c.name}</td><td>{c.nip||'-'}</td><td>{c.assignedUser?.name||'-'}</td><td>{money(c.netAmount)}</td><td>{c.extraCostDescription||'-'}</td><td><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();setSelectedCompany(c)}}>✏️</button><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();deleteCompany(c)}}>🗑️</button></td></tr>)}</tbody></table></div>{selectedCompany&&<CompanyDetails key={selectedCompany.id} company={selectedCompany} users={data.users} orders={data.extraOrders.filter(o=>o.companyId===selectedCompany.id)} onSubmit={updateCompany} onDelete={()=>deleteCompany(selectedCompany)}/>}</div></div></div>}
  {tab==='employees'&&<div className="panel"><h1>Baza pracowników</h1><div className="employeeGrid">{data.users.map(u=><EmployeeCard key={u.id} u={u} onEdit={()=>{setTab('users');setEditUser(u)}} onDelete={()=>deleteUser(u)}/>)}</div></div>}
- {tab==='work'&&<div className="panel"><div className="card" style={{maxWidth:760}}><h1>Panel pracownika</h1><VoiceWorkAssistant form={form} setForm={setForm} data={data}/><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/><select value={form.companyId} onChange={e=>setForm({...form,companyId:e.target.value,newCompanyName:e.target.value?'':form.newCompanyName})}><option value="">Wybierz firmę</option>{data.companies.filter(c=>c.status!=='INACTIVE').map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><input placeholder="Albo wpisz nową firmę, jeśli nie ma jej na liście" value={form.newCompanyName} onChange={e=>setForm({...form,newCompanyName:e.target.value,companyId:e.target.value?'':form.companyId})}/><input placeholder="Numer zlecenia opcjonalnie" value={form.orderNumber} onChange={e=>setForm({...form,orderNumber:e.target.value})}/><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>{workTypes.map(t=><option key={t}>{t}</option>)}</select><input placeholder="Czynność" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Opis wykonanych prac" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Czas pracy np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/><input placeholder="Czas dojazdu np. 30m" value={form.travelTime} onChange={e=>setForm({...form,travelTime:e.target.value})}/><input placeholder="Dodatkowy koszt np. 300" value={form.additionalCost} onChange={e=>setForm({...form,additionalCost:e.target.value})}/><input placeholder="Opis kosztu np. ratownik medyczny" value={form.additionalCostDescription} onChange={e=>setForm({...form,additionalCostDescription:e.target.value})}/><button type="button" className="orange" onClick={addWork}>Dodaj wpis</button></div></div>}
+ {tab==='work'&&<div className="panel"><div className="card" style={{maxWidth:760}}><h1>Panel pracownika</h1><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/><select value={form.companyId} onChange={e=>setForm({...form,companyId:e.target.value,newCompanyName:e.target.value?'':form.newCompanyName,netAmount:e.target.value?'':form.netAmount})}><option value="">Wybierz firmę</option>{data.companies.filter(c=>c.status!=='INACTIVE').map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><input placeholder="Albo wpisz nową firmę, jeśli nie ma jej na liście" value={form.newCompanyName} onChange={e=>setForm({...form,newCompanyName:e.target.value,companyId:e.target.value?'':form.companyId})}/><input placeholder="Numer zlecenia opcjonalnie" value={form.orderNumber} onChange={e=>setForm({...form,orderNumber:e.target.value})}/><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>{workTypes.map(t=><option key={t}>{t}</option>)}</select><textarea placeholder="Opis wykonanych prac" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/>{!form.companyId&&form.newCompanyName&&<input type="number" placeholder="Kwota za zlecenie — tylko dla firmy spoza listy" value={form.netAmount||''} onChange={e=>setForm({...form,netAmount:e.target.value})}/>}<input placeholder="Czas pracy np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/><input placeholder="Czas dojazdu np. 30m" value={form.travelTime} onChange={e=>setForm({...form,travelTime:e.target.value})}/><input placeholder="Dodatkowy koszt np. 300" value={form.additionalCost} onChange={e=>setForm({...form,additionalCost:e.target.value})}/><input placeholder="Opis kosztu np. ratownik medyczny" value={form.additionalCostDescription} onChange={e=>setForm({...form,additionalCostDescription:e.target.value})}/><button type="button" className="orange" onClick={addWork}>Dodaj wpis</button></div></div>}
  {tab==='extraOrders'&&<ExtraOrdersPanel data={data} order={order} setOrder={setOrder} addExtraOrder={addExtraOrder} deleteExtraOrder={deleteExtraOrder}/>} 
  {tab==='initialTrainings'&&<InitialTrainingsPanel data={data} training={training} setTraining={setTraining} addInitialTraining={addInitialTraining} deleteExtraOrder={deleteExtraOrder}/>} 
  {tab==='ai'&&<div className="panel"><h1>AI analiza rentowności</h1><button className="orange" onClick={runAi}>Uruchom AI analizę</button><p>{ai||'AI obliczy rentowność każdego klienta i poda konkretne podpowiedzi. Uwzględnia obsługę miesięczną, zlecenia dodatkowe, dojazdy, koszty dodatkowe i koszt czasu pracy.'}</p></div>}
@@ -150,44 +175,6 @@ export default function Dashboard({user}){
  {tab==='users'&&<UsersPanel data={data} editUser={editUser} setEditUser={setEditUser} addUser={addUser} saveUser={saveUser} deleteUser={deleteUser}/>} 
  {tab==='pwa'&&<div className="panel"><h1>Aplikacja mobilna PWA</h1><p><b>Android:</b> Chrome → trzy kropki → Dodaj do ekranu głównego.</p><p><b>iPhone:</b> Safari → Udostępnij → Do ekranu początkowego.</p></div>}
  </div></main></div>
-}
-
-function VoiceWorkAssistant({form,setForm,data}){
- const [open,setOpen]=useState(false);
- const [step,setStep]=useState(0);
- const [listening,setListening]=useState(false);
- const [message,setMessage]=useState('Kliknij start, a aplikacja zada pytania i uzupełni formularz.');
- const questions=[
-  {key:'company',label:'Dla jakiej firmy?',hint:'Powiedz nazwę firmy, np. WizzAir albo nowa firma ABC.'},
-  {key:'type',label:'Jaki rodzaj czynności?',hint:'Np. dokumentacja, audyt, szkolenie, dojazd, email, telefon albo inne.'},
-  {key:'title',label:'Jaka czynność?',hint:'Np. szkolenie okresowe, dokumentacja powypadkowa, audyt BHP.'},
-  {key:'description',label:'Opisz wykonane prace.',hint:'Powiedz krótki opis wykonanych prac.'},
-  {key:'time',label:'Ile czasu pracy?',hint:'Np. dwie godziny, 2:30, 150 minut.'},
-  {key:'travelTime',label:'Ile czasu dojazdu?',hint:'Np. 30 minut. Jeśli nie było dojazdu, powiedz zero.'},
-  {key:'additionalCost',label:'Czy były dodatkowe koszty?',hint:'Powiedz kwotę, np. 300 zł. Jeśli nie było kosztów, powiedz zero.'},
-  {key:'additionalCostDescription',label:'Opisz dodatkowe koszty.',hint:'Np. ratownik medyczny, sala, materiały. Jeśli brak, powiedz brak.'}
- ];
- function speak(txt){try{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.lang='pl-PL';u.rate=0.95;window.speechSynthesis.speak(u)}catch(e){}}
- function clean(t){return String(t||'').trim()}
- function findCompany(text){const q=clean(text).toLowerCase();return (data.companies||[]).find(c=>String(c.name||'').toLowerCase()===q)||(data.companies||[]).find(c=>String(c.name||'').toLowerCase().includes(q)||q.includes(String(c.name||'').toLowerCase()))}
- function normalizeType(text){const q=clean(text).toLowerCase();return workTypes.find(t=>q.includes(t))||'inne'}
- function normalizeCost(text){const q=clean(text).toLowerCase();if(q==='brak'||q==='zero'||q==='nie'||q.includes('brak'))return '';const m=q.replace(',','.').match(/\d+(\.\d+)?/);return m?m[0]:''}
- function applyAnswer(key,text){const answer=clean(text);if(!answer)return;
-  if(key==='company'){
-   const c=findCompany(answer);
-   if(c)setForm(f=>({...f,companyId:c.id,newCompanyName:''}));
-   else setForm(f=>({...f,companyId:'',newCompanyName:answer}));
-  }else if(key==='type')setForm(f=>({...f,type:normalizeType(answer)}));
-  else if(key==='additionalCost')setForm(f=>({...f,additionalCost:normalizeCost(answer)}));
-  else if(key==='additionalCostDescription')setForm(f=>({...f,additionalCostDescription:answer.toLowerCase()==='brak'?'':answer}));
-  else setForm(f=>({...f,[key]:answer}));
- }
- function ask(i){const q=questions[i];if(!q){setMessage('Gotowe. Sprawdź pola i kliknij „Dodaj wpis”.');speak('Gotowe. Sprawdź pola i kliknij Dodaj wpis.');setListening(false);return}setMessage(q.label+' '+q.hint);speak(q.label+' '+q.hint)}
- function listen(){const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Rec){alert('Twoja przeglądarka nie obsługuje wpisywania głosowego. Użyj Chrome albo Edge.');return}const rec=new Rec();rec.lang='pl-PL';rec.interimResults=false;rec.maxAlternatives=1;setListening(true);rec.onresult=(e)=>{const text=e.results?.[0]?.[0]?.transcript||'';applyAnswer(questions[step].key,text);const next=step+1;setStep(next);setListening(false);setMessage('Usłyszałem: '+text);setTimeout(()=>ask(next),300)};rec.onerror=()=>{setListening(false);setMessage('Nie usłyszałem dobrze. Kliknij „Powtórz odpowiedź”.')};rec.onend=()=>setListening(false);rec.start()}
- function start(){setOpen(true);setStep(0);setTimeout(()=>ask(0),100)}
- function repeat(){ask(step)}
- function next(){const n=Math.min(step+1,questions.length);setStep(n);ask(n)}
- return <div className="voiceBox" style={{marginBottom:16}}><button type="button" className="orange" onClick={start}>🎙️ Wpis głosowy AI</button>{open&&<div className="voicePanel" style={{marginTop:12,padding:12,border:"1px solid #c9d6e3",borderRadius:12,background:"#f8fbff"}}><h3>Asystent głosowy</h3><p><b>Pytanie {Math.min(step+1,questions.length)}/{questions.length}:</b> {message}</p><div className="row"><button type="button" className="orange" onClick={listen}>{listening?'Słucham...':'Odpowiedz głosem'}</button><button type="button" className="light" onClick={repeat}>Powtórz pytanie</button><button type="button" className="light" onClick={next}>Pomiń</button><button type="button" className="light" onClick={()=>setOpen(false)}>Zamknij</button></div><p className="muted">Po zakończeniu asystenta sprawdź pola i kliknij „Dodaj wpis”.</p></div>}</div>
 }
 
 function SummaryTable({rows}){return <div className="card"><h2>Podsumowanie</h2><div className="tableWrap"><table><thead><tr><th>Firma</th><th>Godziny</th><th>Kwota miesięczna</th><th>Zlecenia dodatkowe</th><th>Szkolenia wstępne</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk po kosztach</th><th>Stawka/h</th><th>Rentowność</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><span className={'status '+r.status}></span>{r.name}</td><td>{minToText(r.minutes)}</td><td>{money(r.netMonthly)}</td><td>{money(r.netOrders)}</td><td>{money(r.trainingAmount||0)}</td><td>{money(r.costs||0)}</td><td>{money(r.timeCost||0)}</td><td>{money(r.profit||0)}</td><td>{r.rate.toFixed(2)} zł/h</td><td>{r.rent}</td></tr>)}</tbody></table></div><p className="muted">Rentowność = kwota netto miesięczna + zlecenia dodatkowe + szkolenia wstępne - koszt dojazdów - dodatkowe koszty - koszt czasu pracy. Koszt czasu pracy: obsługa miesięczna 150 zł/h, zlecenia dodatkowe 250 zł/h. Szkolenia wstępne: dla firm miesięcznych koszt czasu 150 zł/h, dla firm spoza obsługi szkolenie jest przychodem.</p></div>}
