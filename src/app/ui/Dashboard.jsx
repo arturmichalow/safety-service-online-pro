@@ -46,7 +46,7 @@ export default function Dashboard({user}){
   const profit=net-costs-timeCost;
   const rate=minutes?profit/(minutes/60):0;
   const rent=profit>0?(rate>=250?'Wysoka':'Średnia'):minutes||costs||net?'Niska':'Brak';
-  return {...c,entries,orders,trainings,normalOrders,minutes,netMonthly,netOrders,trainingCost,netTotal:net,costs,timeCost,profit,hours:+(minutes/60).toFixed(2),rate:+rate.toFixed(2),rent}
+  return {...c,entries,orders,trainings,normalOrders,minutes,netMonthly,netOrders,trainingIncome,netTotal:net,costs,timeCost,profit,hours:+(minutes/60).toFixed(2),rate:+rate.toFixed(2),rent}
 });return{rows,totalMin:rows.reduce((s,r)=>s+r.minutes,0),totalIncome:rows.reduce((s,r)=>s+r.netTotal,0),best:rows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit)[0],time:[...rows].sort((a,b)=>b.minutes-a.minutes)[0]}},[data]);
   const filteredCompanies=useMemo(()=>{return [...(data.companies||[])]
  .filter(c=>(c?.name||'').toLowerCase().includes(companySearch.toLowerCase()))
@@ -116,7 +116,7 @@ export default function Dashboard({user}){
  {tab==='pwa'&&<div className="panel"><h1>Aplikacja mobilna PWA</h1><p><b>Android:</b> Chrome → trzy kropki → Dodaj do ekranu głównego.</p><p><b>iPhone:</b> Safari → Udostępnij → Do ekranu początkowego.</p></div>}
  </div></main></div>
 }
-function SummaryTable({rows}){return <div className="card"><h2>Podsumowanie</h2><div className="tableWrap"><table><thead><tr><th>Firma</th><th>Godziny</th><th>Kwota miesięczna</th><th>Zlecenia dodatkowe</th><th>Szkolenia w ramach obsługi</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk po kosztach</th><th>Stawka/h</th><th>Rentowność</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><span className={'status '+r.status}></span>{r.name}</td><td>{minToText(r.minutes)}</td><td>{money(r.netMonthly)}</td><td>{money(r.netOrders)}</td><td>{money(r.trainingCost||0)}</td><td>{money(r.costs||0)}</td><td>{money(r.timeCost||0)}</td><td>{money(r.profit||0)}</td><td>{r.rate.toFixed(2)} zł/h</td><td>{r.rent}</td></tr>)}</tbody></table></div><p className="muted">Rentowność = kwota netto miesięczna + zlecenia dodatkowe - szkolenia w ramach obsługi - koszt dojazdów - dodatkowe koszty - koszt czasu pracy. Koszt czasu pracy przyjęty: 120 zł/h.</p></div>}
+function SummaryTable({rows}){return <div className="card"><h2>Podsumowanie</h2><div className="tableWrap"><table><thead><tr><th>Firma</th><th>Godziny</th><th>Kwota miesięczna</th><th>Zlecenia dodatkowe</th><th>Szkolenia w ramach obsługi</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk po kosztach</th><th>Stawka/h</th><th>Rentowność</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><span className={'status '+r.status}></span>{r.name}</td><td>{minToText(r.minutes)}</td><td>{money(r.netMonthly)}</td><td>{money(r.netOrders)}</td><td>{money(r.trainingIncome||0)}</td><td>{money(r.costs||0)}</td><td>{money(r.timeCost||0)}</td><td>{money(r.profit||0)}</td><td>{r.rate.toFixed(2)} zł/h</td><td>{r.rent}</td></tr>)}</tbody></table></div><p className="muted">Rentowność = kwota netto miesięczna + zlecenia dodatkowe - szkolenia w ramach obsługi - koszt dojazdów - dodatkowe koszty - koszt czasu pracy. Koszt czasu pracy przyjęty: 120 zł/h.</p></div>}
 function Field({label,children}){return <label className="field"><span>{label}</span>{children}</label>}
 function CompanyDetails({company,users,orders,onSubmit,onDelete}){
  const missing=['address','contactPerson','phone','email'].filter(k=>!company[k]);
