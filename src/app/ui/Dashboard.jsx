@@ -42,7 +42,14 @@ export default function Dashboard({user}){
   const entryCosts=entries.reduce((s,e)=>s+Number(e.additionalCost||0),0);
   const orderCosts=normalOrders.reduce((s,o)=>s+Number(o.travelCost||0)+Number(o.extraCost||0),0);
   const costs=Number(c.travelCost||0)+Number(c.extraCost||0)+entryCosts+orderCosts;
-  const timeCost=(workMinutes/60)*120+(orderMinutes/60)*250;
+  const monthlyTimeCost=(workMinutes/60)*150;
+const extraOrdersTimeCost=(orderMinutes/60)*250;
+const trainingTimeCost=(trainingMinutes/60)*250;
+
+const timeCost=
+monthlyTimeCost+
+extraOrdersTimeCost+
+trainingTimeCost;
   const profit=net-costs-timeCost;
   const rate=minutes?profit/(minutes/60):0;
   const rent=profit>0?(rate>=250?'Wysoka':'Średnia'):minutes||costs||net?'Niska':'Brak';
