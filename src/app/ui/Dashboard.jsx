@@ -32,9 +32,10 @@ export default function Dashboard({user}){
   const orders=data.extraOrders.filter(o=>o.companyId===c.id);
   const trainings=orders.filter(o=>String(o.type||'').toLowerCase()==='szkolenie wstępne');
   const normalOrders=orders.filter(o=>String(o.type||'').toLowerCase()!=='szkolenie wstępne');
-  const workMinutes=entries.reduce((s,e)=>s+e.minutes,0);
-  const orderMinutes=orders.reduce((s,o)=>s+Number(o.minutes||0),0);
-  const minutes=workMinutes+orderMinutes;
+  const workMinutes=entries.reduce((s,e)=>s+Number(e.minutes||0),0);
+  const normalOrderMinutes=normalOrders.reduce((s,o)=>s+Number(o.minutes||0),0);
+  const trainingMinutes=trainings.reduce((s,o)=>s+Number(o.minutes||0),0);
+  const minutes=workMinutes+normalOrderMinutes+trainingMinutes;
   const netMonthly=Number(c.netAmount||0);
   const netOrders=normalOrders.reduce((s,o)=>s+Number(o.netAmount||0),0);
   const trainingIncome=trainings.reduce((s,o)=>s+Number(o.netAmount||0),0);
@@ -43,13 +44,9 @@ export default function Dashboard({user}){
   const orderCosts=normalOrders.reduce((s,o)=>s+Number(o.travelCost||0)+Number(o.extraCost||0),0);
   const costs=Number(c.travelCost||0)+Number(c.extraCost||0)+entryCosts+orderCosts;
   const monthlyTimeCost=(workMinutes/60)*150;
-const extraOrdersTimeCost=(orderMinutes/60)*250;
-const trainingTimeCost=(trainingMinutes/60)*250;
-
-const timeCost=
-monthlyTimeCost+
-extraOrdersTimeCost+
-trainingTimeCost;
+  const extraOrdersTimeCost=(normalOrderMinutes/60)*250;
+  const trainingTimeCost=(trainingMinutes/60)*250;
+  const timeCost=monthlyTimeCost+extraOrdersTimeCost+trainingTimeCost;
   const profit=net-costs-timeCost;
   const rate=minutes?profit/(minutes/60):0;
   const rent=profit>0?(rate>=250?'Wysoka':'Średnia'):minutes||costs||net?'Niska':'Brak';
@@ -123,7 +120,7 @@ trainingTimeCost;
  {tab==='pwa'&&<div className="panel"><h1>Aplikacja mobilna PWA</h1><p><b>Android:</b> Chrome → trzy kropki → Dodaj do ekranu głównego.</p><p><b>iPhone:</b> Safari → Udostępnij → Do ekranu początkowego.</p></div>}
  </div></main></div>
 }
-function SummaryTable({rows}){return <div className="card"><h2>Podsumowanie</h2><div className="tableWrap"><table><thead><tr><th>Firma</th><th>Godziny</th><th>Kwota miesięczna</th><th>Zlecenia dodatkowe</th><th>Szkolenia wstępne</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk po kosztach</th><th>Stawka/h</th><th>Rentowność</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><span className={'status '+r.status}></span>{r.name}</td><td>{minToText(r.minutes)}</td><td>{money(r.netMonthly)}</td><td>{money(r.netOrders)}</td><td>{money(r.trainingIncome||0)}</td><td>{money(r.costs||0)}</td><td>{money(r.timeCost||0)}</td><td>{money(r.profit||0)}</td><td>{r.rate.toFixed(2)} zł/h</td><td>{r.rent}</td></tr>)}</tbody></table></div><p className="muted">Rentowność = kwota netto miesięczna + zlecenia dodatkowe + szkolenia wstępne - koszt dojazdów - dodatkowe koszty - koszt czasu pracy. Koszt czasu pracy: obsługa miesięczna 120 zł/h, zlecenia dodatkowe i szkolenia wstępne 250 zł/h.</p></div>}
+function SummaryTable({rows}){return <div className="card"><h2>Podsumowanie</h2><div className="tableWrap"><table><thead><tr><th>Firma</th><th>Godziny</th><th>Kwota miesięczna</th><th>Zlecenia dodatkowe</th><th>Szkolenia wstępne</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk po kosztach</th><th>Stawka/h</th><th>Rentowność</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><span className={'status '+r.status}></span>{r.name}</td><td>{minToText(r.minutes)}</td><td>{money(r.netMonthly)}</td><td>{money(r.netOrders)}</td><td>{money(r.trainingIncome||0)}</td><td>{money(r.costs||0)}</td><td>{money(r.timeCost||0)}</td><td>{money(r.profit||0)}</td><td>{r.rate.toFixed(2)} zł/h</td><td>{r.rent}</td></tr>)}</tbody></table></div><p className="muted">Rentowność = kwota netto miesięczna + zlecenia dodatkowe + szkolenia wstępne - koszt dojazdów - dodatkowe koszty - koszt czasu pracy. Koszt czasu pracy: obsługa miesięczna 150 zł/h, zlecenia dodatkowe i szkolenia wstępne 250 zł/h.</p></div>}
 function Field({label,children}){return <label className="field"><span>{label}</span>{children}</label>}
 function CompanyDetails({company,users,orders,onSubmit,onDelete}){
  const missing=['address','contactPerson','phone','email'].filter(k=>!company[k]);
