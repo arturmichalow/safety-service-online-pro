@@ -27,14 +27,28 @@ export default function LoginPage() {
   return (
     <div className="login">
       <form className="loginBox" action={login}>
+
         <img
           src="/logo.png"
-          className="logo"
-          style={{ height: 64, marginBottom: 20 }}
+          style={{
+            width: '320px',
+            height: 'auto',
+            marginBottom: '30px',
+            display: 'block',
+            marginLeft: 'auto',
+            marginRight: 'auto'
+          }}
           alt="Safety Service"
         />
 
-        <h1>Logowanie</h1>
+        <h1
+          style={{
+            textAlign: 'center',
+            marginBottom: '25px'
+          }}
+        >
+          Logowanie
+        </h1>
 
         <input
           name="email"
