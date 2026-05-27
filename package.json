@@ -8,6 +8,7 @@
     "start": "next start",
     "seed": "node prisma/seed.js",
     "backup": "node scripts/backup-email.js",
+    "backup-email": "node scripts/backup-email.js",
     "backup:local": "node scripts/backup.js",
     "electron": "electron desktop/main.js",
     "desktop:build": "electron-builder"
