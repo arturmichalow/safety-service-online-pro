@@ -91,3 +91,72 @@ tr.clickable:hover{background:#fff7ed}
   .iconBtn{width:40px}
   .row{display:block}
 }
+@media(max-width:768px){
+  .app{
+    display:block;
+    width:100%;
+    overflow-x:hidden;
+  }
+
+  .sidebar{
+    width:100%;
+    height:auto;
+    position:relative;
+    padding:12px;
+  }
+
+  .main{
+    width:100%;
+    overflow-x:hidden;
+  }
+
+  .top{
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    padding:14px;
+    margin:0;
+  }
+
+  .top .btn{
+    display:none;
+  }
+
+  .content,
+  .panel{
+    width:100%;
+    padding:10px;
+  }
+
+  .grid,
+  .grid2,
+  .grid3,
+  .kpis,
+  .companyInfo{
+    display:grid;
+    grid-template-columns:1fr!important;
+  }
+
+  .card,
+  .detailBox{
+    width:100%;
+    max-width:100%;
+  }
+
+  input,
+  select,
+  textarea{
+    width:100%;
+    max-width:100%;
+    font-size:16px;
+  }
+
+  .tableWrap{
+    width:100%;
+    overflow-x:auto;
+  }
+
+  table{
+    min-width:900px;
+  }
+}
