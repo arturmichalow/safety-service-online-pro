@@ -17,37 +17,31 @@ Railway PostgreSQL działa poprawnie.
 `;
 
     const backupPath = path.join(__dirname, "backup.txt");
-
     fs.writeFileSync(backupPath, backupContent);
 
     console.log("Plik backup.txt utworzony");
-
     console.log("Konfiguracja SMTP...");
 
     const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
+      host: process.env.SMTP_HOST,
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+    });
 
     console.log("SMTP gotowe");
-
     console.log("WYSYŁAM MAIL...");
 
     const info = await transporter.sendMail({
-      console.log("MAIL WYSŁANY");
-console.log(info);
       from: process.env.SMTP_FROM,
       to: process.env.BACKUP_TO_EMAIL,
       subject: "Backup Safety Service",
@@ -63,7 +57,6 @@ console.log(info);
     console.log("MAIL WYSŁANY");
     console.log("Message ID:", info.messageId);
 
-    console.log("Usuwanie lokalnego pliku backup...");
     fs.unlinkSync(backupPath);
 
     console.log("Backup wysłany poprawnie.");
