@@ -46,6 +46,8 @@ Railway PostgreSQL działa poprawnie.
     console.log("WYSYŁAM MAIL...");
 
     const info = await transporter.sendMail({
+      console.log("MAIL WYSŁANY");
+console.log(info);
       from: process.env.SMTP_FROM,
       to: process.env.BACKUP_TO_EMAIL,
       subject: "Backup Safety Service",
