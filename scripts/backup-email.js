@@ -35,6 +35,10 @@ Railway PostgreSQL działa poprawnie.
   tls: {
     rejectUnauthorized: false,
   },
+
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
     console.log("SMTP gotowe");
