@@ -23,20 +23,19 @@ Railway PostgreSQL działa poprawnie.
     console.log("Konfiguracja SMTP...");
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    });
+  host: process.env.SMTP_HOST,
+  port: 465,
+  secure: true,
+
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+
+  tls: {
+    rejectUnauthorized: false,
+  },
+});
 
     console.log("SMTP gotowe");
     console.log("WYSYŁAM MAIL...");
