@@ -1,3 +1,4 @@
+console.log("START BACKUP");
 const nodemailer = require("nodemailer");
 const fs = require("fs");
 const path = require("path");
@@ -46,3 +47,4 @@ Railway PostgreSQL działa poprawnie.
 }
 
 sendBackup();
+console.log("KONIEC BACKUP");
