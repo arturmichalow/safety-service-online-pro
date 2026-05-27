@@ -1,11 +1,19 @@
 console.log("START BACKUP");
 
-const nodemailer = require("nodemailer");
-const fs = require("fs");
-const path = require("path");
+const { Resend } = require("resend");
 
 async function sendBackup() {
   try {
+    console.log("Sprawdzanie zmiennych...");
+
+    const required = ["RESEND_API_KEY", "BACKUP_TO_EMAIL"];
+
+    for (const key of required) {
+      if (!process.env[key]) {
+        throw new Error(`Brakuje zmiennej środowiskowej: ${key}`);
+      }
+    }
+
     console.log("Tworzenie backupu...");
 
     const backupContent = `
@@ -16,52 +24,40 @@ To jest automatyczny backup systemu.
 Railway PostgreSQL działa poprawnie.
 `;
 
-    const backupPath = path.join(__dirname, "backup.txt");
-    fs.writeFileSync(backupPath, backupContent);
+    const backupBase64 = Buffer.from(backupContent, "utf8").toString("base64");
 
-    console.log("Plik backup.txt utworzony");
-    console.log("Konfiguracja SMTP...");
+    console.log("Konfiguracja Resend...");
 
-    const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: 465,
-  secure: true,
+    const resend = new Resend(process.env.RESEND_API_KEY);
 
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
-
-    console.log("SMTP gotowe");
     console.log("WYSYŁAM MAIL...");
 
-    const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM,
-      to: process.env.BACKUP_TO_EMAIL,
+    const { data, error } = await resend.emails.send({
+      from: "Safety Service Backup <onboarding@resend.dev>",
+      to: [process.env.BACKUP_TO_EMAIL],
       subject: "Backup Safety Service",
-      text: "Automatyczny backup systemu.",
+      text: "Automatyczny backup systemu Safety Service.",
       attachments: [
         {
           filename: "backup.txt",
-          path: backupPath,
+          content: backupBase64,
         },
       ],
     });
 
+    if (error) {
+      console.error("BŁĄD RESEND:");
+      console.error(error);
+      throw new Error("Resend nie wysłał maila.");
+    }
+
     console.log("MAIL WYSŁANY");
-    console.log("Message ID:", info.messageId);
-
-    fs.unlinkSync(backupPath);
-
+    console.log("Resend ID:", data.id);
     console.log("Backup wysłany poprawnie.");
   } catch (err) {
     console.error("BŁĄD BACKUPU:");
     console.error(err);
+    process.exit(1);
   }
 }
 
