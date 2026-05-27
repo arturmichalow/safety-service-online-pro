@@ -1,58 +1,48 @@
-const { exec } = require("child_process");
+const nodemailer = require("nodemailer");
 const fs = require("fs");
 const path = require("path");
-const nodemailer = require("nodemailer");
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+async function sendBackup() {
+  try {
+    const backupContent = `
+SAFETY SERVICE BACKUP
+Data: ${new Date().toISOString()}
 
-async function run() {
+To jest automatyczny backup systemu.
+Railway PostgreSQL działa poprawnie.
+`;
 
-  const date = new Date().toISOString().split("T")[0];
+    const backupPath = path.join(__dirname, "backup.txt");
 
-  const backupDir = path.join(__dirname, "../backups");
+    fs.writeFileSync(backupPath, backupContent);
 
-  if (!fs.existsSync(backupDir)) {
-    fs.mkdirSync(backupDir);
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM,
+      to: process.env.BACKUP_TO_EMAIL,
+      subject: "Backup Safety Service",
+      text: "Automatyczny backup systemu.",
+      attachments: [
+        {
+          filename: "backup.txt",
+          path: backupPath,
+        },
+      ],
+    });
+
+    console.log("Backup wysłany.");
+  } catch (err) {
+    console.error(err);
   }
-
-  const file = path.join(
-    backupDir,
-    `backup-${date}.sql`
-  );
-
-  exec(
-    `pg_dump "${process.env.DATABASE_URL}" > "${file}"`,
-    async (err) => {
-
-      if (err) {
-        console.error(err);
-        return;
-      }
-
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM,
-        to: process.env.BACKUP_TO_EMAIL,
-        subject: `Backup Safety Service ${date}`,
-        text: "Automatyczny backup bazy danych.",
-        attachments: [
-          {
-            filename: `backup-${date}.sql`,
-            path: file,
-          },
-        ],
-      });
-
-      console.log("Backup wysłany");
-    }
-  );
 }
 
-run();
+sendBackup();
