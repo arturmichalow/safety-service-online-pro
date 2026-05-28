@@ -90,14 +90,15 @@ export async function POST(req) {
     });
 
     function val(row, names) {
-      const wanted = names.map(n => key(n));
+  const wanted = names.map(n => key(n));
 
-      const idx = headers.findIndex(h =>
-        h && wanted.some(n => h.includes(n))
-      );
+  const idx = headers.findIndex(h => {
+    if (!h) return false;
+    return wanted.some(n => h.includes(n));
+  });
 
-      return idx >= 1 ? row.getCell(idx).value : null;
-    }
+  return idx >= 1 ? row.getCell(idx).value : null;
+}
 
     for (let r = 2; r <= ws.rowCount; r++) {
       const row = ws.getRow(r);
