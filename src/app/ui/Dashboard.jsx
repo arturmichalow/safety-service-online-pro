@@ -211,7 +211,74 @@ export default function Dashboard({user}){
  {tab==='profitCharts'&&<ChartPanel title="Wykres rentowności" rows={stats.rows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit).slice(0,12)} dataKey="profit" color="#132734"/>}
  {tab==='import'&&<div className="panel"><h1>Import danych</h1><p>Excel: Nazwa firmy, Kwota, Uwagi, Pracownik. Wartość BIURO przypisze firmę do Arkadiusza Źrebca.</p><form action="/api/import/excel" method="post" encType="multipart/form-data"><input type="file" name="file" accept=".xlsx,.csv"/><button className="orange">Import danych</button></form></div>}
  {tab==='export'&&<div className="panel"><h1>Eksporty</h1><div className="row"><a className="btn orange" href="/api/export/excel">Excel miesięczny/roczny</a><a className="btn" href="/api/export/csv">CSV</a><a className="btn" href="/api/export/pdf" target="_blank">PDF</a></div></div>}
- {tab==='security'&&<div className="panel"><h1>Bezpieczeństwo i konto</h1><p>Zalogowano jako: <b>{user.name}</b> ({user.role})</p><h2>Backup systemu</h2><div className="backupBar">Ostatni backup: {new Date().toISOString()} (daily)</div><p><a className="btn red" href="/api/backup">Utwórz backup teraz</a></p><h2>Ostatnie zdarzenia</h2><AuditTable/></div>}
+ {tab==='security'&&
+  <div className="panel">
+    <h1>Bezpieczeństwo i konto</h1>
+
+    <p>
+      Zalogowano jako: <b>{user.name}</b> ({user.role})
+    </p>
+
+    <h2>Backup systemu</h2>
+
+    <div className="backupBar">
+      Ostatni backup: {new Date().toISOString()} (daily)
+    </div>
+
+    <div className="row" style={{marginTop:12, marginBottom:18}}>
+      <a className="btn red" href="/api/backup">
+        Utwórz backup teraz
+      </a>
+
+      <a className="btn orange" href="/api/backup/download">
+        Pobierz backup
+      </a>
+
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+
+          if (!confirm("UWAGA: To nadpisze aktualną bazę danych. Przywrócić backup?")) {
+            return;
+          }
+
+          const formData = new FormData(e.currentTarget);
+
+          const res = await fetch("/api/backup/restore", {
+            method: "POST",
+            body: formData,
+          });
+
+          const result = await res.json();
+
+          if (!res.ok) {
+            alert(result.error || "Błąd przywracania backupu");
+            return;
+          }
+
+          alert("Backup przywrócony. Aplikacja zostanie odświeżona.");
+          location.reload();
+        }}
+        style={{display:"inline-flex", gap:8, alignItems:"center", flexWrap:"wrap"}}
+      >
+        <input
+          name="file"
+          type="file"
+          accept=".sql"
+          required
+          style={{maxWidth:280}}
+        />
+
+        <button className="red" type="submit">
+          Przywróć backup
+        </button>
+      </form>
+    </div>
+
+    <h2>Ostatnie zdarzenia</h2>
+    <AuditTable/>
+  </div>
+}
  {tab==='users'&&<UsersPanel data={data} editUser={editUser} setEditUser={setEditUser} addUser={addUser} saveUser={saveUser} deleteUser={deleteUser}/>} 
  {tab==='pwa'&&<div className="panel"><h1>Aplikacja mobilna PWA</h1><p><b>Android:</b> Chrome → trzy kropki → Dodaj do ekranu głównego.</p><p><b>iPhone:</b> Safari → Udostępnij → Do ekranu początkowego.</p></div>}
  </div></main></div>
