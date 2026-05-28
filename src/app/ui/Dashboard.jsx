@@ -505,31 +505,224 @@ function ShopOrdersPanel({data,shopOrder,setShopOrder,addShopOrder,deleteExtraOr
 }
 
 
-function WorkerStatsPanel({data}){
- const [workerFilter,setWorkerFilter]=useState('ALL');
- const [companyFilter,setCompanyFilter]=useState('ALL');
- const companyName=(id)=>data.companies.find(c=>c.id===id)?.name||'Firma spoza listy';
- const workerName=(entry)=>entry.user?.name||entry.userName||data.users.find(u=>u.id===entry.userId)?.name||data.users.find(u=>u.id===entry.createdById)?.name||entry.createdBy?.name||'Nieznany pracownik';
- const workerKey=(entry)=>entry.userId||entry.createdById||entry.user?.id||entry.createdBy?.id||workerName(entry);
- const rows=useMemo(()=>{
-  const map=new Map();
-  (data.workEntries||[]).forEach(e=>{
-   const wk=workerKey(e);
-   const cn=companyName(e.companyId);
-   const key=wk+'__'+(e.companyId||cn);
-   const prev=map.get(key)||{worker:workerName(e),company:cn,companyId:e.companyId||'',minutes:0,count:0,extraCosts:0};
-   prev.minutes+=Number(e.minutes||0);
-   prev.count+=1;
-   prev.extraCosts+=Number(e.additionalCost||0);
-   map.set(key,prev);
-  });
-  return [...map.values()].sort((a,b)=>a.worker.localeCompare(b.worker,'pl')||b.minutes-a.minutes);
- },[data.workEntries,data.companies,data.users]);
- const filtered=rows.filter(r=>(workerFilter==='ALL'||r.worker===workerFilter)&&(companyFilter==='ALL'||r.companyId===companyFilter));
- const workers=[...new Set(rows.map(r=>r.worker))].sort((a,b)=>a.localeCompare(b,'pl'));
- const totalMinutes=filtered.reduce((s,r)=>s+r.minutes,0);
- const totalEntries=filtered.reduce((s,r)=>s+r.count,0);
- return <div className="panel"><h1>Pracownicy</h1><div className="kpis"><div className="card">Pracownicy<h2>{workers.length}</h2></div><div className="card">Firmy w zestawieniu<h2>{new Set(filtered.map(r=>r.company)).size}</h2></div><div className="card">Łączny czas<h2>{minToText(totalMinutes)}</h2></div><div className="card">Ilość wpisów<h2>{totalEntries}</h2></div></div><div className="card"><h2>Czas pracowników na firmy</h2><div className="grid2"><Field label="Filtr pracownika"><select value={workerFilter} onChange={e=>setWorkerFilter(e.target.value)}><option value="ALL">Wszyscy pracownicy</option>{workers.map(w=><option key={w} value={w}>{w}</option>)}</select></Field><Field label="Filtr firmy"><select value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)}><option value="ALL">Wszystkie firmy</option>{data.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field></div><div className="tableWrap"><table><thead><tr><th>Pracownik</th><th>Firma</th><th>Czas</th><th>Ilość wpisów</th><th>Koszty dodatkowe</th></tr></thead><tbody>{filtered.map((r,i)=><tr key={i}><td>{r.worker}</td><td>{r.company}</td><td>{minToText(r.minutes)}</td><td>{r.count}</td><td>{money(r.extraCosts)}</td></tr>)}</tbody></table></div><p className="muted">Tabela pokazuje czas z Panelu pracownika, pogrupowany według pracownika i firmy.</p></div></div>
+function WorkerStatsPanel({ data }) {
+  const [workerFilter, setWorkerFilter] = useState('ALL');
+  const [companyFilter, setCompanyFilter] = useState('ALL');
+  const [editEntry, setEditEntry] = useState(null);
+
+  const companyName = (id) =>
+    data.companies.find(c => c.id === id)?.name || 'Firma spoza listy';
+
+  const workerName = (entry) =>
+    entry.user?.name ||
+    entry.userName ||
+    data.users.find(u => u.id === entry.userId)?.name ||
+    data.users.find(u => u.id === entry.createdById)?.name ||
+    entry.createdBy?.name ||
+    'Nieznany pracownik';
+
+  const entries = useMemo(() => {
+    return (data.workEntries || [])
+      .map(e => ({
+        ...e,
+        worker: workerName(e),
+        company: companyName(e.companyId),
+        dateText: String(e.date || '').slice(0, 10)
+      }))
+      .filter(e =>
+        (workerFilter === 'ALL' || e.worker === workerFilter) &&
+        (companyFilter === 'ALL' || e.companyId === companyFilter)
+      )
+      .sort((a, b) =>
+        a.worker.localeCompare(b.worker, 'pl') ||
+        a.company.localeCompare(b.company, 'pl') ||
+        new Date(b.date) - new Date(a.date)
+      );
+  }, [data.workEntries, data.companies, data.users, workerFilter, companyFilter]);
+
+  const workers = [...new Set((data.workEntries || []).map(e => workerName(e)))]
+    .sort((a, b) => a.localeCompare(b, 'pl'));
+
+  const totalMinutes = entries.reduce((s, r) => s + Number(r.minutes || 0), 0);
+  const totalEntries = entries.length;
+  const totalExtraCosts = entries.reduce((s, r) => s + Number(r.additionalCost || 0), 0);
+
+  async function deleteEntry(entry) {
+    if (!confirm(`Usunąć wpis pracy: ${entry.worker} / ${entry.company}?`)) return;
+
+    try {
+      await jsonFetch('/api/work/' + entry.id, { method: 'DELETE' });
+      alert('Wpis usunięty.');
+      location.reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function saveEntry(e) {
+    e.preventDefault();
+
+    try {
+      const form = e.currentTarget;
+
+      const body = {
+        date: form.date.value,
+        companyId: form.companyId.value,
+        orderNumber: form.orderNumber.value,
+        type: form.type.value,
+        title: form.description.value || form.type.value,
+        description: form.description.value,
+        minutes: parseTime(form.time.value),
+        travelMinutes: parseTime(form.travelTime.value),
+        additionalCost: Number(form.additionalCost.value || 0),
+        additionalCostDescription: form.additionalCostDescription.value
+      };
+
+      await jsonFetch('/api/work/' + editEntry.id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      alert('Wpis zapisany.');
+      setEditEntry(null);
+      location.reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h1>Pracownicy</h1>
+
+      <div className="kpis">
+        <div className="card">Pracownicy<h2>{workers.length}</h2></div>
+        <div className="card">Firmy w zestawieniu<h2>{new Set(entries.map(r => r.company)).size}</h2></div>
+        <div className="card">Łączny czas<h2>{minToText(totalMinutes)}</h2></div>
+        <div className="card">Ilość wpisów<h2>{totalEntries}</h2></div>
+      </div>
+
+      <div className="card">
+        <h2>Wpisy pracy pracowników</h2>
+
+        <div className="grid2">
+          <Field label="Filtr pracownika">
+            <select value={workerFilter} onChange={e => setWorkerFilter(e.target.value)}>
+              <option value="ALL">Wszyscy pracownicy</option>
+              {workers.map(w => <option key={w} value={w}>{w}</option>)}
+            </select>
+          </Field>
+
+          <Field label="Filtr firmy">
+            <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)}>
+              <option value="ALL">Wszystkie firmy</option>
+              {data.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Pracownik</th>
+                <th>Firma</th>
+                <th>Typ</th>
+                <th>Opis</th>
+                <th>Czas pracy</th>
+                <th>Czas dojazdu</th>
+                <th>Koszty</th>
+                <th>Opis kosztu</th>
+                <th>Akcje</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {entries.map(e => (
+                <tr key={e.id}>
+                  <td>{e.dateText}</td>
+                  <td>{e.worker}</td>
+                  <td>{e.company}</td>
+                  <td>{e.type}</td>
+                  <td>{e.description || '-'}</td>
+                  <td>{minToText(Number(e.minutes || 0))}</td>
+                  <td>{minToText(Number(e.travelMinutes || 0))}</td>
+                  <td>{money(e.additionalCost || 0)}</td>
+                  <td>{e.additionalCostDescription || '-'}</td>
+                  <td>
+                    <button className="light iconBtn" onClick={() => setEditEntry(e)}>✏️</button>
+                    <button className="light iconBtn" onClick={() => deleteEntry(e)}>🗑️</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="muted">
+          Łączne koszty dodatkowe: {money(totalExtraCosts)}. Tutaj możesz edytować albo usuwać pojedyncze wpisy pracy.
+        </p>
+      </div>
+
+      {editEntry && (
+        <div className="card" style={{ maxWidth: 760, marginTop: 20 }}>
+          <h2>Edytuj wpis pracy</h2>
+
+          <form onSubmit={saveEntry}>
+            <Field label="Data">
+              <input name="date" type="date" defaultValue={String(editEntry.date || '').slice(0, 10)} />
+            </Field>
+
+            <Field label="Firma">
+              <select name="companyId" defaultValue={editEntry.companyId || ''}>
+                {data.companies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Numer zlecenia">
+              <input name="orderNumber" defaultValue={editEntry.orderNumber || ''} />
+            </Field>
+
+            <Field label="Typ pracy">
+              <select name="type" defaultValue={editEntry.type || 'inne'}>
+                {workTypes.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
+
+            <Field label="Opis wykonanych prac">
+              <textarea name="description" defaultValue={editEntry.description || ''} />
+            </Field>
+
+            <Field label="Czas pracy">
+              <input name="time" defaultValue={minToText(Number(editEntry.minutes || 0))} />
+            </Field>
+
+            <Field label="Czas dojazdu">
+              <input name="travelTime" defaultValue={minToText(Number(editEntry.travelMinutes || 0))} />
+            </Field>
+
+            <Field label="Dodatkowy koszt">
+              <input name="additionalCost" type="number" defaultValue={editEntry.additionalCost || 0} />
+            </Field>
+
+            <Field label="Opis kosztu">
+              <input name="additionalCostDescription" defaultValue={editEntry.additionalCostDescription || ''} />
+            </Field>
+
+            <div className="row" style={{ marginTop: 12 }}>
+              <button className="orange" type="submit">Zapisz zmiany</button>
+              <button className="light" type="button" onClick={() => setEditEntry(null)}>Anuluj</button>
+              <button className="red" type="button" onClick={() => deleteEntry(editEntry)}>Usuń wpis</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function EmployeeCard({u,onEdit,onDelete}){return <div className="card employeeCard"><div><h2>{u.name}</h2><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role==='ADMIN'?'Administrator':'BHP'}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" title="Edytuj" onClick={onEdit}>✏️</button><button className="light iconBtn" title="Usuń" onClick={onDelete}>🗑️</button></div></div>}
