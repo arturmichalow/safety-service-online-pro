@@ -19,6 +19,11 @@ export default function Dashboard({user}){
  const [companySearch,setCompanySearch]=useState('');
  const [companySort,setCompanySort]=useState('name_asc');
  const [companyStatus,setCompanyStatus]=useState('ALL');
+ const [selectedMonth,setSelectedMonth]=useState(new Date().toISOString().slice(0,7));
+
+function inSelectedMonth(date){
+  return String(date || '').slice(0,7) === selectedMonth;
+}
  const [tab,setTab]=useState(user.role==='WORKER'?'work':'dashboard');
  const [data,setData]=useState({companies:[],workEntries:[],extraOrders:[],users:[]});
  const [summarySort,setSummarySort]=useState({
@@ -35,8 +40,8 @@ export default function Dashboard({user}){
  async function load(){const r=await fetch('/api/data',{cache:'no-store'});const j=await r.json();setData({...j,extraOrders:j.extraOrders||[]});setSelectedCompany(prev=>prev?j.companies.find(c=>c.id===prev.id)||prev:j.companies?.[0]||null)}
  useEffect(()=>{load()},[]);
  const stats=useMemo(()=>{const rows=data.companies.map(c=>{
-  const entries=data.workEntries.filter(w=>w.companyId===c.id);
-  const orders=data.extraOrders.filter(o=>o.companyId===c.id);
+  const entries=data.workEntries.filter(w=>w.companyId===c.id && inSelectedMonth(w.date));
+const orders=data.extraOrders.filter(o=>o.companyId===c.id && inSelectedMonth(o.date));
   const trainings=orders.filter(o=>String(o.type||'').toLowerCase()==='szkolenie wstępne');
   const normalOrders=orders.filter(o=>String(o.type||'').toLowerCase()!=='szkolenie wstępne');
   const shopOrders=normalOrders.filter(o=>String(o.type||'').toLowerCase()==='zlecenie sklep');
@@ -101,7 +106,7 @@ return {
   totalIncome: groupedRows.reduce((s,r)=>s+r.netTotal,0),
   best: groupedRows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit)[0],
   time: [...groupedRows].sort((a,b)=>b.minutes-a.minutes)[0]
-}},[data]);
+}},[data,selectedMonth]);
   const filteredCompanies=useMemo(()=>{return [...(data.companies||[])]
  .filter(c=>(c?.name||'').toLowerCase().includes(companySearch.toLowerCase()))
  .filter(c=>companyStatus==='ALL'||c.status===companyStatus)
@@ -238,7 +243,19 @@ return {
  async function saveUser(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());body.permissions=Object.fromEntries(modules.map(([k])=>[k,!!body['perm_'+k]]));modules.forEach(([k])=>delete body['perm_'+k]);await jsonFetch('/api/users/'+editUser.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setEditUser(null);await load();alert('Użytkownik zapisany.')}catch(err){alert(err.message)}}
  async function deleteUser(u){if(!confirm(`Czy na pewno usunąć pracownika: ${u.name}?`))return;try{await jsonFetch('/api/users/'+u.id,{method:'DELETE'});if(editUser?.id===u.id)setEditUser(null);await load();alert('Pracownik usunięty.')}catch(err){alert(err.message)}}
  return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>has(user,key)&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
- {tab==='dashboard'&&<div className="panel"><h1>Podsumowanie</h1><div className="kpis"><div className="card">Firmy<h2>{data.companies.length}</h2></div><div className="card">Godziny<h2>{minToText(stats.totalMin)}</h2></div><div className="card">Przychód<h2>{money(stats.totalIncome)}</h2></div><div className="card">Najbardziej rentowny<h2>{stats.best?.name||'-'}</h2></div></div><SummaryTable rows={stats.rows}/></div>}
+ {tab==='dashboard'&&<div className="panel">
+  <div className="row between">
+    <h1>Podsumowanie</h1>
+    <label>
+      Miesiąc:
+      <input
+        type="month"
+        value={selectedMonth}
+        onChange={e=>setSelectedMonth(e.target.value)}
+        style={{marginLeft:8, maxWidth:180}}
+      />
+    </label>
+  </div>
  {tab==='clients'&&<div className="panel"><div className="grid"><form className="card" onSubmit={saveCompany}><h2>Dodaj firmę</h2><input name="name" placeholder="Nazwa firmy" required/><input name="nip" placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/><input name="address" placeholder="Adres"/><input name="contactPerson" placeholder="Osoba kontaktowa"/><input name="phone" placeholder="Telefon"/><input name="email" placeholder="Email"/><input name="serviceType" placeholder="Typ obsługi"/><select name="assignedUserId"><option value="">Przypisz pracownika</option>{data.users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><select name="status"><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select><select name="billingType"><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select><input name="netAmount" type="number" placeholder="Kwota netto miesięcznie"/><input name="travelCost" type="number" placeholder="Koszt dojazdów"/><input name="extraCost" type="number" placeholder="Dodatkowe koszty"/><input name="extraCostDescription" placeholder="Opis dodatkowych kosztów / uwagi"/><button className="orange">Zapisz</button></form><div className="card"><h2>Baza firm</h2><div className="filterBar"><input placeholder="Szukaj firmy..." value={companySearch} onChange={e=>setCompanySearch(e.target.value)}/><select value={companySort} onChange={e=>setCompanySort(e.target.value)}><option value="name_asc">Nazwa A-Z</option><option value="name_desc">Nazwa Z-A</option><option value="money_desc">Największa kwota</option><option value="money_asc">Najmniejsza kwota</option></select><select value={companyStatus} onChange={e=>setCompanyStatus(e.target.value)}><option value="ALL">Wszystkie statusy</option><option value="ACTIVE">Aktywne</option><option value="PAUSED">Zawieszone</option><option value="INACTIVE">Nieaktywne</option></select></div><div className="muted">Widoczne firmy: {filteredCompanies.length} / {data.companies.length}</div><div className="tableWrap"><table><thead><tr><th>Status</th><th>Firma</th><th>NIP</th><th>Pracownik</th><th>Kwota miesięczna</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{filteredCompanies.map(c=><tr className="clickable" key={c.id} onClick={()=>setSelectedCompany(c)}><td><span className={'status '+c.status}></span></td><td>{c.name}</td><td>{c.nip||'-'}</td><td>{c.assignedUser?.name||'-'}</td><td>{money(c.netAmount)}</td><td>{c.extraCostDescription||'-'}</td><td><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();setSelectedCompany(c)}}>✏️</button><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();deleteCompany(c)}}>🗑️</button></td></tr>)}</tbody></table></div>{selectedCompany&&<CompanyDetails key={selectedCompany.id} company={selectedCompany} users={data.users} orders={data.extraOrders.filter(o=>o.companyId===selectedCompany.id)} onSubmit={updateCompany} onDelete={()=>deleteCompany(selectedCompany)}/>}</div></div></div>}
  {tab==='employees'&&<div className="panel"><h1>Baza pracowników</h1><div className="employeeGrid">{data.users.map(u=><EmployeeCard key={u.id} u={u} onEdit={()=>{setTab('users');setEditUser(u)}} onDelete={()=>deleteUser(u)}/>)}</div></div>}
  {tab==='workerStats'&&<WorkerStatsPanel data={data}/>}
