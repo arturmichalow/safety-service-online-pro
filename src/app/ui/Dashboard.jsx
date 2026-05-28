@@ -21,6 +21,10 @@ export default function Dashboard({user}){
  const [companyStatus,setCompanyStatus]=useState('ALL');
  const [tab,setTab]=useState(user.role==='WORKER'?'work':'dashboard');
  const [data,setData]=useState({companies:[],workEntries:[],extraOrders:[],users:[]});
+ const [summarySort,setSummarySort]=useState({
+  key:'profit',
+  direction:'desc'
+});
  const [selectedCompany,setSelectedCompany]=useState(null);
  const [editUser,setEditUser]=useState(null);
  const [ai,setAi]=useState('');
@@ -280,7 +284,135 @@ export default function Dashboard({user}){
  </div></main></div>
 }
 
-function SummaryTable({rows}){return <div className="card"><h2>Podsumowanie</h2><div className="tableWrap"><table><thead><tr><th>Firma</th><th>Godziny</th><th>Kwota miesięczna</th><th>Zlecenia dodatkowe</th><th>Szkolenia wstępne</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk po kosztach</th><th>Stawka/h</th><th>Rentowność</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><span className={'status '+r.status}></span>{r.name}</td><td>{minToText(r.minutes)}</td><td>{money(r.netMonthly)}</td><td>{money(r.netOrders)}</td><td>{money(r.trainingAmount||0)}</td><td>{money(r.costs||0)}</td><td>{money(r.timeCost||0)}</td><td>{money(r.profit||0)}</td><td>{r.rate.toFixed(2)} zł/h</td><td>{r.rent}</td></tr>)}</tbody></table></div><p className="muted">Rentowność = kwota netto miesięczna + zlecenia dodatkowe + szkolenia wstępne - koszt dojazdów - dodatkowe koszty - koszt czasu pracy. Koszt czasu pracy: obsługa miesięczna 150 zł/h, zlecenia dodatkowe 250 zł/h. Szkolenia wstępne: dla firm miesięcznych koszt czasu 150 zł/h, dla firm spoza obsługi szkolenie jest przychodem.</p></div>}
+function SummaryTable({rows}){
+
+ const [sort,setSort]=useState({
+  key:'profit',
+  direction:'desc'
+ });
+
+ function sortRows(list){
+  const sorted=[...list];
+
+  sorted.sort((a,b)=>{
+   let av=a[sort.key];
+   let bv=b[sort.key];
+
+   if(typeof av==='string'){
+    av=av.toLowerCase();
+    bv=bv.toLowerCase();
+   }
+
+   if(av>bv)return sort.direction==='asc'?1:-1;
+   if(av<bv)return sort.direction==='asc'?-1:1;
+
+   return 0;
+  });
+
+  return sorted;
+ }
+
+ function toggleSort(key){
+  setSort(prev=>({
+   key,
+   direction:
+    prev.key===key
+     ? prev.direction==='asc'
+       ? 'desc'
+       : 'asc'
+     : 'desc'
+  }));
+ }
+
+ function arrow(key){
+  if(sort.key!==key)return '↕';
+
+  return sort.direction==='asc'
+   ? '↑'
+   : '↓';
+ }
+
+ const sortedRows=sortRows(rows);
+
+ return (
+  <div className="card">
+   <h2>Podsumowanie</h2>
+
+   <div className="tableWrap">
+    <table>
+     <thead>
+      <tr>
+       <th onClick={()=>toggleSort('name')} style={{cursor:'pointer'}}>
+        Firma {arrow('name')}
+       </th>
+
+       <th onClick={()=>toggleSort('minutes')} style={{cursor:'pointer'}}>
+        Godziny {arrow('minutes')}
+       </th>
+
+       <th onClick={()=>toggleSort('netMonthly')} style={{cursor:'pointer'}}>
+        Kwota miesięczna {arrow('netMonthly')}
+       </th>
+
+       <th onClick={()=>toggleSort('netOrders')} style={{cursor:'pointer'}}>
+        Zlecenia dodatkowe {arrow('netOrders')}
+       </th>
+
+       <th onClick={()=>toggleSort('trainingAmount')} style={{cursor:'pointer'}}>
+        Szkolenia wstępne {arrow('trainingAmount')}
+       </th>
+
+       <th onClick={()=>toggleSort('costs')} style={{cursor:'pointer'}}>
+        Koszty {arrow('costs')}
+       </th>
+
+       <th onClick={()=>toggleSort('timeCost')} style={{cursor:'pointer'}}>
+        Koszt czasu {arrow('timeCost')}
+       </th>
+
+       <th onClick={()=>toggleSort('profit')} style={{cursor:'pointer'}}>
+        Zysk po kosztach {arrow('profit')}
+       </th>
+
+       <th onClick={()=>toggleSort('rate')} style={{cursor:'pointer'}}>
+        Stawka/h {arrow('rate')}
+       </th>
+
+       <th onClick={()=>toggleSort('rent')} style={{cursor:'pointer'}}>
+        Rentowność {arrow('rent')}
+       </th>
+      </tr>
+     </thead>
+
+     <tbody>
+      {sortedRows.map(r=>
+       <tr key={r.id}>
+        <td>
+         <span className={'status '+r.status}></span>
+         {r.name}
+        </td>
+
+        <td>{minToText(r.minutes)}</td>
+        <td>{money(r.netMonthly)}</td>
+        <td>{money(r.netOrders)}</td>
+        <td>{money(r.trainingAmount||0)}</td>
+        <td>{money(r.costs||0)}</td>
+        <td>{money(r.timeCost||0)}</td>
+        <td>{money(r.profit||0)}</td>
+        <td>{r.rate.toFixed(2)} zł/h</td>
+        <td>{r.rent}</td>
+       </tr>
+      )}
+     </tbody>
+    </table>
+   </div>
+
+   <p className="muted">
+    Rentowność = kwota netto miesięczna + zlecenia dodatkowe + szkolenia wstępne - koszt dojazdów - dodatkowe koszty - koszt czasu pracy.
+   </p>
+  </div>
+ )
+}
 function Field({label,children}){return <label className="field"><span>{label}</span>{children}</label>}
 function CompanyDetails({company,users,orders,onSubmit,onDelete}){
  const missing=['address','contactPerson','phone','email'].filter(k=>!company[k]);
