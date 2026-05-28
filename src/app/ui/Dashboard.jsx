@@ -310,7 +310,30 @@ return {
     </button>
   </form>
 </div>
+<button
+  className="red"
+  type="button"
+  onClick={async () => {
+    if (!confirm("UWAGA: To usunie firmy, wpisy pracy i zlecenia. Kontynuować?")) return;
+    if (!confirm("Na pewno? Tej operacji nie cofniesz bez backupu SQL.")) return;
 
+    const res = await fetch("/api/admin/clear-data", {
+      method: "POST",
+    });
+
+    const result = await res.json();
+
+    if (!res.ok) {
+      alert(result.error || "Błąd czyszczenia danych");
+      return;
+    }
+
+    alert("Dane testowe usunięte.");
+    location.reload();
+  }}
+>
+  Wyczyść dane testowe
+</button>
     <h2>Ostatnie zdarzenia</h2>
     <AuditTable/>
   </div>
