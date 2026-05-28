@@ -226,9 +226,9 @@ export default function Dashboard({user}){
     </div>
 
     <div className="row" style={{marginTop:12, marginBottom:18}}>
-      <a className="btn red" href="/api/backup">
-        Utwórz backup teraz
-      </a>
+      <a className="btn red" href="/api/backup/download">
+  Pobierz backup SQL
+</a>
 
       <a className="btn orange" href="/api/backup/download">
         Pobierz backup
