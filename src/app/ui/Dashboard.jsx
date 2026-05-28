@@ -65,7 +65,43 @@ export default function Dashboard({user}){
   const rate=minutes?profit/(minutes/60):0;
   const rent=profit>0?(rate>=250?'Wysoka':'Średnia'):minutes||costs||net?'Niska':'Brak';
   return {...c,entries,orders,trainings,normalOrders,shopOrders,regularOrders,minutes,netMonthly,netOrders,trainingIncome,trainingAmount,netTotal:net,costs,timeCost,profit,hours:+(minutes/60).toFixed(2),rate:+rate.toFixed(2),rent}
-});return{rows,totalMin:rows.reduce((s,r)=>s+r.minutes,0),totalIncome:rows.reduce((s,r)=>s+r.netTotal,0),best:rows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit)[0],time:[...rows].sort((a,b)=>b.minutes-a.minutes)[0]}},[data]);
+});
+
+const groupedMap = new Map();
+
+rows.forEach(r => {
+  const key = String(r.name || '').trim().toLowerCase();
+
+  if (!groupedMap.has(key)) {
+    groupedMap.set(key, {...r});
+    return;
+  }
+
+  const g = groupedMap.get(key);
+
+  g.minutes += r.minutes || 0;
+  g.netMonthly += r.netMonthly || 0;
+  g.netOrders += r.netOrders || 0;
+  g.trainingIncome += r.trainingIncome || 0;
+  g.trainingAmount += r.trainingAmount || 0;
+  g.netTotal += r.netTotal || 0;
+  g.costs += r.costs || 0;
+  g.timeCost += r.timeCost || 0;
+  g.profit += r.profit || 0;
+  g.hours = +(g.minutes / 60).toFixed(2);
+  g.rate = g.minutes ? +(g.profit / (g.minutes / 60)).toFixed(2) : 0;
+  g.rent = g.profit > 0 ? (g.rate >= 250 ? 'Wysoka' : 'Średnia') : (g.minutes || g.costs || g.netTotal ? 'Niska' : 'Brak');
+});
+
+const groupedRows = [...groupedMap.values()];
+
+return {
+  rows: groupedRows,
+  totalMin: groupedRows.reduce((s,r)=>s+r.minutes,0),
+  totalIncome: groupedRows.reduce((s,r)=>s+r.netTotal,0),
+  best: groupedRows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit)[0],
+  time: [...groupedRows].sort((a,b)=>b.minutes-a.minutes)[0]
+}},[data]);
   const filteredCompanies=useMemo(()=>{return [...(data.companies||[])]
  .filter(c=>(c?.name||'').toLowerCase().includes(companySearch.toLowerCase()))
  .filter(c=>companyStatus==='ALL'||c.status===companyStatus)
