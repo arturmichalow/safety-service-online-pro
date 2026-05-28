@@ -226,54 +226,50 @@ export default function Dashboard({user}){
     </div>
 
     <div className="row" style={{marginTop:12, marginBottom:18}}>
-      <a className="btn red" href="/api/backup/download">
-  Pobierz backup SQL
-</a>
+  <a className="btn red" href="/api/backup/download">
+    Pobierz backup SQL
+  </a>
 
-      <a className="btn orange" href="/api/backup/download">
-        Pobierz backup
-      </a>
+  <form
+    onSubmit={async (e) => {
+      e.preventDefault();
 
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
+      if (!confirm("UWAGA: To nadpisze aktualną bazę danych. Przywrócić backup?")) {
+        return;
+      }
 
-          if (!confirm("UWAGA: To nadpisze aktualną bazę danych. Przywrócić backup?")) {
-            return;
-          }
+      const formData = new FormData(e.currentTarget);
 
-          const formData = new FormData(e.currentTarget);
+      const res = await fetch("/api/backup/restore", {
+        method: "POST",
+        body: formData,
+      });
 
-          const res = await fetch("/api/backup/restore", {
-            method: "POST",
-            body: formData,
-          });
+      const result = await res.json();
 
-          const result = await res.json();
+      if (!res.ok) {
+        alert(result.error || "Błąd przywracania backupu");
+        return;
+      }
 
-          if (!res.ok) {
-            alert(result.error || "Błąd przywracania backupu");
-            return;
-          }
+      alert("Backup przywrócony. Aplikacja zostanie odświeżona.");
+      location.reload();
+    }}
+    style={{display:"inline-flex", gap:8, alignItems:"center", flexWrap:"wrap"}}
+  >
+    <input
+      name="file"
+      type="file"
+      accept=".sql"
+      required
+      style={{maxWidth:280}}
+    />
 
-          alert("Backup przywrócony. Aplikacja zostanie odświeżona.");
-          location.reload();
-        }}
-        style={{display:"inline-flex", gap:8, alignItems:"center", flexWrap:"wrap"}}
-      >
-        <input
-          name="file"
-          type="file"
-          accept=".sql"
-          required
-          style={{maxWidth:280}}
-        />
-
-        <button className="red" type="submit">
-          Przywróć backup
-        </button>
-      </form>
-    </div>
+    <button className="red" type="submit">
+      Przywróć backup SQL
+    </button>
+  </form>
+</div>
 
     <h2>Ostatnie zdarzenia</h2>
     <AuditTable/>
