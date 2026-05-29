@@ -1,6 +1,6 @@
 import { prisma } from '../../../../lib/prisma';
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 export async function POST(req) {
   try {
@@ -32,25 +32,17 @@ export async function POST(req) {
 
       const resetLink = `${appUrl}/reset-password?token=${token}`;
 
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: Number(process.env.SMTP_PORT) === 465,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
+      const resend = new Resend(process.env.RESEND_API_KEY);
 
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      await resend.emails.send({
+        from: 'Safety Service <onboarding@resend.dev>',
         to: email,
         subject: 'Reset hasła — Safety Service',
         html: `
           <div style="font-family:Arial,sans-serif;padding:20px">
             <h2>Reset hasła</h2>
             <p>Otrzymaliśmy prośbę o reset hasła do aplikacji Safety Service.</p>
-            <p>Kliknij poniższy link, aby ustawić nowe hasło:</p>
+            <p>Kliknij poniższy przycisk, aby ustawić nowe hasło:</p>
             <p>
               <a href="${resetLink}" style="background:#ff5a1f;color:white;padding:12px 18px;text-decoration:none;border-radius:8px;display:inline-block">
                 Ustaw nowe hasło
