@@ -75,10 +75,24 @@ export default function LoginPage({ searchParams }) {
           </div>
         )}
 
-        <input name="email" type="email" placeholder="Adres email" required />
-        <input name="password" type="password" placeholder="Hasło" required />
+        <input
+          name="email"
+          type="email"
+          placeholder="Adres email"
+          required
+        />
 
-        <button className="orange" style={{ width: '100%', marginTop: 10 }}>
+        <input
+          name="password"
+          type="password"
+          placeholder="Hasło"
+          required
+        />
+
+        <button
+          className="orange"
+          style={{ width: '100%', marginTop: 10 }}
+        >
           Zaloguj
         </button>
 
