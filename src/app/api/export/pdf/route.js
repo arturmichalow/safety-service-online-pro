@@ -1,3 +1,100 @@
 import { prisma } from '../../../../lib/prisma';
 import { currentUser } from '../../../../lib/auth';
-export async function GET(){const user=currentUser();if(!user||user.role!=='ADMIN')return Response.json({error:'Forbidden'},{status:403});const entries=await prisma.workEntry.findMany({include:{company:true,user:true},orderBy:{date:'desc'},take:300});const rows=entries.map(e=>`<tr><td>${e.date.toISOString().slice(0,10)}</td><td>${e.company.name}</td><td>${e.user.name}</td><td>${e.title}</td><td>${e.minutes} min</td><td>${e.travelMinutes||0} min</td><td>${e.additionalCost||0} zł</td><td>${e.additionalCostDescription||''}</td></tr>`).join('');const html=`<html><head><meta charset="utf-8"><title>Raport PDF</title><style>body{font-family:Arial;padding:30px}th{background:#132734;color:white}td,th{border:1px solid #ddd;padding:8px}table{border-collapse:collapse;width:100%}</style></head><body><h1>Raport Safety Service</h1><table><tr><th>Data</th><th>Firma</th><th>Użytkownik</th><th>Czynność</th><th>Czas</th><th>Dojazd</th><th>Koszt dodatkowy</th><th>Opis kosztu</th></tr>${rows}</table><script>window.print()</script></body></html>`;return new Response(html,{headers:{'Content-Type':'text/html;charset=utf-8'}})}
+
+function monthRange(month) {
+  const m = month || new Date().toISOString().slice(0, 7);
+  const start = new Date(`${m}-01T00:00:00.000Z`);
+  const end = new Date(start);
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  return { month: m, start, end };
+}
+
+function money(v) {
+  return `${Number(v || 0).toLocaleString('pl-PL')} zł`;
+}
+
+function minToText(m) {
+  const h = Math.floor((m || 0) / 60);
+  const mm = (m || 0) % 60;
+  return `${h}h ${mm}m`;
+}
+
+export async function GET(req) {
+  const user = await currentUser();
+
+  if (!user || user.role !== 'ADMIN') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const { month, start, end } = monthRange(searchParams.get('month'));
+
+  const entries = await prisma.workEntry.findMany({
+    where: { date: { gte: start, lt: end } },
+    include: { company: true, user: true },
+    orderBy: { date: 'desc' }
+  });
+
+  const orders = await prisma.extraOrder.findMany({
+    where: { date: { gte: start, lt: end } },
+    include: { company: true },
+    orderBy: { date: 'desc' }
+  });
+
+  const totalMinutes = entries.reduce((s, e) => s + Number(e.minutes || 0), 0);
+  const totalCosts = entries.reduce((s, e) => s + Number(e.additionalCost || 0), 0);
+  const totalOrders = orders.reduce((s, o) => s + Number(o.netAmount || 0), 0);
+
+  const rows = entries.map(e => `
+    <tr>
+      <td>${e.date.toISOString().slice(0, 10)}</td>
+      <td>${e.company?.name || ''}</td>
+      <td>${e.user?.name || ''}</td>
+      <td>${e.title || ''}</td>
+      <td>${e.description || ''}</td>
+      <td>${minToText(e.minutes || 0)}</td>
+      <td>${minToText(e.travelMinutes || 0)}</td>
+      <td>${money(e.additionalCost || 0)}</td>
+      <td>${e.additionalCostDescription || ''}</td>
+    </tr>
+  `).join('');
+
+  const html = `
+<html>
+<head>
+<meta charset="utf-8">
+<title>Raport ${month}</title>
+<style>
+body{font-family:Arial;padding:30px;color:#081724}
+h1{margin-bottom:5px}
+.box{display:inline-block;border:1px solid #ddd;padding:14px;margin:8px 8px 18px 0;border-radius:8px}
+th{background:#132734;color:white}
+td,th{border:1px solid #ddd;padding:8px;font-size:12px}
+table{border-collapse:collapse;width:100%}
+</style>
+</head>
+<body>
+<h1>Raport Safety Service</h1>
+<h2>Miesiąc: ${month}</h2>
+
+<div class="box"><b>Czas pracy</b><br>${minToText(totalMinutes)}</div>
+<div class="box"><b>Koszty dodatkowe</b><br>${money(totalCosts)}</div>
+<div class="box"><b>Zlecenia dodatkowe</b><br>${money(totalOrders)}</div>
+<div class="box"><b>Liczba wpisów</b><br>${entries.length}</div>
+
+<h2>Historia pracy</h2>
+<table>
+<tr>
+<th>Data</th><th>Firma</th><th>Użytkownik</th><th>Czynność</th><th>Opis</th><th>Czas</th><th>Dojazd</th><th>Koszt</th><th>Opis kosztu</th>
+</tr>
+${rows}
+</table>
+
+<script>window.print()</script>
+</body>
+</html>`;
+
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html;charset=utf-8' }
+  });
+}
