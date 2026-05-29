@@ -5,29 +5,32 @@ import { verifyPassword, setSession } from '../../lib/auth';
 async function login(formData) {
   'use server';
 
-  const email = String(formData.get('email') || '');
+  const email = String(formData.get('email') || '').trim();
   const password = String(formData.get('password') || '');
 
   const user = await prisma.user.findUnique({
     where: { email }
   });
 
-  if (!user || !user.active) return;
+  if (!user || !user.active) {
+    redirect('/login?error=1');
+  }
 
   const ok = await verifyPassword(password, user.passwordHash);
 
-  if (!ok) return;
+  if (!ok) {
+    redirect('/login?error=1');
+  }
 
   setSession(user);
 
   redirect('/');
 }
 
-export default function LoginPage() {
+export default function LoginPage({ searchParams }) {
   return (
     <div className="login">
       <form className="loginBox" action={login}>
-
         <img
           src="/logo.png"
           style={{
@@ -50,16 +53,34 @@ export default function LoginPage() {
           Logowanie
         </h1>
 
+        {searchParams?.error && (
+          <div
+            style={{
+              background: '#ffe5e5',
+              color: '#c62828',
+              padding: '12px',
+              borderRadius: '8px',
+              marginBottom: '15px',
+              textAlign: 'center',
+              fontWeight: 'bold'
+            }}
+          >
+            Nieprawidłowy adres e-mail lub hasło.
+          </div>
+        )}
+
         <input
           name="email"
           type="email"
           placeholder="Adres email"
+          required
         />
 
         <input
           name="password"
           type="password"
           placeholder="Hasło"
+          required
         />
 
         <button
