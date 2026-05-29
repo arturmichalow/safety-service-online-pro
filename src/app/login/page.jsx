@@ -26,7 +26,11 @@ async function login(formData) {
 
   redirect('/');
 }
-
+<div style={{textAlign:'center',marginTop:'15px'}}>
+  <a href="/forgot-password">
+    Nie pamiętasz hasła?
+  </a>
+</div>
 export default function LoginPage({ searchParams }) {
   return (
     <div className="login">
