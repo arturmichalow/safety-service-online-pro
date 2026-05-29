@@ -22,8 +22,8 @@ export async function POST(req) {
   const user = await currentUser();
 
   if (!user || !['ADMIN', 'WORKER'].includes(user.role)) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  return Response.json({ error: 'Forbidden' }, { status: 403 });
+}
 
   const body = await req.json();
 
