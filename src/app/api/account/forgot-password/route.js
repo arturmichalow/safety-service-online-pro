@@ -34,26 +34,31 @@ export async function POST(req) {
 
       const resend = new Resend(process.env.RESEND_API_KEY);
 
-      await resend.emails.send({
-        from: 'Safety Service <onboarding@resend.dev>',
-        to: email,
-        subject: 'Reset hasła — Safety Service',
-        html: `
-          <div style="font-family:Arial,sans-serif;padding:20px">
-            <h2>Reset hasła</h2>
-            <p>Otrzymaliśmy prośbę o reset hasła do aplikacji Safety Service.</p>
-            <p>Kliknij poniższy przycisk, aby ustawić nowe hasło:</p>
-            <p>
-              <a href="${resetLink}" style="background:#ff5a1f;color:white;padding:12px 18px;text-decoration:none;border-radius:8px;display:inline-block">
-                Ustaw nowe hasło
-              </a>
-            </p>
-            <p>Link jest ważny przez 1 godzinę.</p>
-            <p>Jeżeli to nie Ty wysłałeś prośbę, zignoruj tę wiadomość.</p>
-          </div>
-        `
-      });
-    }
+      const { data, error } = await resend.emails.send({
+  from: 'Safety Service <onboarding@resend.dev>',
+  to: email,
+  subject: 'Reset hasła — Safety Service',
+  html: `
+    <div style="font-family:Arial,sans-serif;padding:20px">
+      <h2>Reset hasła</h2>
+      <p>Otrzymaliśmy prośbę o reset hasła do aplikacji Safety Service.</p>
+      <p>Kliknij poniższy przycisk, aby ustawić nowe hasło:</p>
+      <p>
+        <a href="${resetLink}" style="background:#ff5a1f;color:white;padding:12px 18px;text-decoration:none;border-radius:8px;display:inline-block">
+          Ustaw nowe hasło
+        </a>
+      </p>
+      <p>Link jest ważny przez 1 godzinę.</p>
+    </div>
+  `
+});
+
+if (error) {
+  console.error('RESEND_ERROR:', error);
+  throw new Error(JSON.stringify(error));
+}
+
+console.log('RESEND_SENT:', data);
 
     return Response.redirect(new URL('/login?reset=1', req.url));
   } catch (err) {
