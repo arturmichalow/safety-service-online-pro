@@ -1,5 +1,5 @@
-import { prisma } from '../../../../../lib/prisma';
-import { currentUser } from '../../../../../lib/auth';
+import { prisma } from '../../../../lib/prisma';
+import { currentUser } from '../../../../lib/auth';
 
 export async function GET() {
   const user = currentUser();
