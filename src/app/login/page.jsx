@@ -23,14 +23,9 @@ async function login(formData) {
   }
 
   setSession(user);
-
   redirect('/');
 }
-<div style={{textAlign:'center',marginTop:'15px'}}>
-  <a href="/forgot-password">
-    Nie pamiętasz hasła?
-  </a>
-</div>
+
 export default function LoginPage({ searchParams }) {
   return (
     <div className="login">
@@ -48,81 +43,62 @@ export default function LoginPage({ searchParams }) {
           alt="Safety Service"
         />
 
-        <h1
-          style={{
-            textAlign: 'center',
-            marginBottom: '25px'
-          }}
-        >
+        <h1 style={{ textAlign: 'center', marginBottom: '25px' }}>
           Logowanie
         </h1>
 
         {searchParams?.error && (
-          <div
-            style={{
-              background: '#ffe5e5',
-              color: '#c62828',
-              padding: '12px',
-              borderRadius: '8px',
-              marginBottom: '15px',
-              textAlign: 'center',
-              fontWeight: 'bold'
-            }}
-          >
+          <div style={{
+            background: '#ffe5e5',
+            color: '#c62828',
+            padding: '12px',
+            borderRadius: '8px',
+            marginBottom: '15px',
+            textAlign: 'center',
+            fontWeight: 'bold'
+          }}>
             Nieprawidłowy adres e-mail lub hasło.
           </div>
         )}
 
-        <input
-          name="email"
-          type="email"
-          placeholder="Adres email"
-          required
-        />
+        {searchParams?.reset && (
+          <div style={{
+            background: '#e8f5e9',
+            color: '#1b5e20',
+            padding: '12px',
+            borderRadius: '8px',
+            marginBottom: '15px',
+            textAlign: 'center',
+            fontWeight: 'bold'
+          }}>
+            Jeśli konto istnieje, wysłaliśmy link resetujący hasło.
+          </div>
+        )}
 
-        <input
-          name="password"
-          type="password"
-          placeholder="Hasło"
-          required
-        />
+        <input name="email" type="email" placeholder="Adres email" required />
+        <input name="password" type="password" placeholder="Hasło" required />
 
-                <button
-          className="orange"
-          style={{ width: '100%', marginTop: 10 }}
-        >
+        <button className="orange" style={{ width: '100%', marginTop: 10 }}>
           Zaloguj
         </button>
 
-        <div style={{ textAlign: 'center', marginTop: '18px' }}>
-          <a href="/forgot-password" style={{ color: '#ff5a14', fontWeight: 'bold' }}>
-            Nie pamiętasz hasła?
-          </a>
-        </div>
-     <button
-  className="orange"
-  style={{ width: '100%', marginTop: 10 }}
->
-  Zaloguj
-</button>
-
-<a
-  href="/forgot-password"
-  style={{
-    display: 'block',
-    width: '100%',
-    marginTop: '14px',
-    padding: '12px',
-    textAlign: 'center',
-    borderRadius: '8px',
-    background: '#132734',
-    color: 'white',
-    fontWeight: 'bold',
-    textDecoration: 'none'
-  }}
->
-  Nie pamiętasz hasła?
-</a>
+        <a
+          href="/forgot-password"
+          style={{
+            display: 'block',
+            width: '100%',
+            marginTop: '14px',
+            padding: '12px',
+            textAlign: 'center',
+            borderRadius: '8px',
+            background: '#132734',
+            color: 'white',
+            fontWeight: 'bold',
+            textDecoration: 'none'
+          }}
+        >
+          Nie pamiętasz hasła?
+        </a>
       </form>
     </div>
   );
