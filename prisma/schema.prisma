@@ -118,4 +118,3 @@ model PasswordResetToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
-npx prisma migrate dev
