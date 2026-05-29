@@ -87,12 +87,18 @@ export default function LoginPage({ searchParams }) {
           required
         />
 
-        <button
+                <button
           className="orange"
           style={{ width: '100%', marginTop: 10 }}
         >
           Zaloguj
         </button>
+
+        <div style={{ textAlign: 'center', marginTop: '18px' }}>
+          <a href="/forgot-password" style={{ color: '#ff5a14', fontWeight: 'bold' }}>
+            Nie pamiętasz hasła?
+          </a>
+        </div>
       </form>
     </div>
   );
