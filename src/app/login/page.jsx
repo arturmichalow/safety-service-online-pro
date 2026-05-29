@@ -99,6 +99,30 @@ export default function LoginPage({ searchParams }) {
             Nie pamiętasz hasła?
           </a>
         </div>
+     <button
+  className="orange"
+  style={{ width: '100%', marginTop: 10 }}
+>
+  Zaloguj
+</button>
+
+<a
+  href="/forgot-password"
+  style={{
+    display: 'block',
+    width: '100%',
+    marginTop: '14px',
+    padding: '12px',
+    textAlign: 'center',
+    borderRadius: '8px',
+    background: '#132734',
+    color: 'white',
+    fontWeight: 'bold',
+    textDecoration: 'none'
+  }}
+>
+  Nie pamiętasz hasła?
+</a>
       </form>
     </div>
   );
