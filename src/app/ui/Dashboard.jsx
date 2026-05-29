@@ -280,7 +280,43 @@ return {
  {tab==='charts'&&<ChartPanel title="Wykres czasu pracy" rows={stats.rows.slice().sort((a,b)=>b.hours-a.hours).slice(0,12)} dataKey="hours" color="#ff5a14"/>}
  {tab==='profitCharts'&&<ChartPanel title="Wykres rentowności" rows={stats.rows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit).slice(0,12)} dataKey="profit" color="#132734"/>}
  {tab==='import'&&<div className="panel"><h1>Import danych</h1><p>Excel: Nazwa firmy, Kwota, Uwagi, Pracownik. Wartość BIURO przypisze firmę do Arkadiusza Źrebca.</p><form action="/api/import/excel" method="post" encType="multipart/form-data"><input type="file" name="file" accept=".xlsx,.csv"/><button className="orange">Import danych</button></form></div>}
- {tab==='export'&&<div className="panel"><h1>Eksporty</h1><div className="row"><a className="btn orange" href="/api/export/excel">Excel miesięczny/roczny</a><a className="btn" href="/api/export/csv">CSV</a><a className="btn" href="/api/export/pdf" target="_blank">PDF</a></div></div>}
+ {tab==='export'&&
+  <div className="panel">
+    <h1>Eksporty</h1>
+
+    <div className="card" style={{maxWidth:700}}>
+      <h2>Eksport raportu za miesiąc</h2>
+
+      <label>
+        Miesiąc:
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={e=>setSelectedMonth(e.target.value)}
+          style={{marginLeft:8, maxWidth:180}}
+        />
+      </label>
+
+      <p className="muted" style={{marginTop:10}}>
+        Eksporty pobierają dane tylko z wybranego miesiąca: wpisy pracy, zlecenia dodatkowe, szkolenia i rentowność.
+      </p>
+
+      <div className="row" style={{marginTop:16}}>
+        <a className="btn orange" href={`/api/export/excel?month=${selectedMonth}`}>
+          Excel za miesiąc
+        </a>
+
+        <a className="btn" href={`/api/export/csv?month=${selectedMonth}`}>
+          CSV za miesiąc
+        </a>
+
+        <a className="btn" href={`/api/export/pdf?month=${selectedMonth}`} target="_blank">
+          PDF za miesiąc
+        </a>
+      </div>
+    </div>
+  </div>
+}
  {tab==='security'&&
   <div className="panel">
     <h1>Bezpieczeństwo i konto</h1>
