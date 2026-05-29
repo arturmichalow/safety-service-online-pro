@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['initialTrainings','Szkolenia wstępne'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['pwa','PWA / telefon']];
+const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['initialTrainings','Szkolenia wstępne'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
 const workTypes=['dokumentacja','audyt','szkolenie','dojazd','email','telefon','inne'];
 const orderTypes=['szkolenie','audyt','ratownik','pomiary oświetlenia','dokumentacja','konsultacje','wypadek','inne'];
 function minToText(m){const h=Math.floor((m||0)/60),mm=(m||0)%60;return `${h}h ${mm}m`}
@@ -405,6 +405,56 @@ return {
   </div>
 }
  {tab==='users'&&<UsersPanel data={data} editUser={editUser} setEditUser={setEditUser} addUser={addUser} saveUser={saveUser} deleteUser={deleteUser}/>} 
+ {tab==='account'&&
+  <div className="panel">
+    <h1>Moje konto</h1>
+
+    <div className="card" style={{maxWidth:520}}>
+      <h2>Zmiana hasła</h2>
+
+      <form onSubmit={async e=>{
+        e.preventDefault();
+
+        const form = e.currentTarget;
+
+        const body = {
+          currentPassword: form.currentPassword.value,
+          newPassword: form.newPassword.value,
+          repeatPassword: form.repeatPassword.value
+        };
+
+        try {
+          await jsonFetch('/api/account/change-password', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+          });
+
+          alert('Hasło zostało zmienione.');
+          form.reset();
+        } catch(err) {
+          alert(err.message);
+        }
+      }}>
+        <Field label="Aktualne hasło">
+          <input name="currentPassword" type="password" required />
+        </Field>
+
+        <Field label="Nowe hasło">
+          <input name="newPassword" type="password" required />
+        </Field>
+
+        <Field label="Powtórz nowe hasło">
+          <input name="repeatPassword" type="password" required />
+        </Field>
+
+        <button className="orange" type="submit">
+          Zmień hasło
+        </button>
+      </form>
+    </div>
+  </div>
+} 
  {tab==='pwa'&&<div className="panel"><h1>Aplikacja mobilna PWA</h1><p><b>Android:</b> Chrome → trzy kropki → Dodaj do ekranu głównego.</p><p><b>iPhone:</b> Safari → Udostępnij → Do ekranu początkowego.</p></div>}
  </div></main></div>
 }
