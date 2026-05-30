@@ -869,34 +869,65 @@ async function generateProfitPdf(r, selectedMonth) {
   doc.text('Raport rentownosci klienta', 20, 60);
 
   doc.setFontSize(11);
-  doc.text(`Klient: ${r.name}`, 20, 75);
+  doc.text(`Klient: ${cleanPdfText(r.name)}`, 20, 75);
   doc.text(`Okres: ${selectedMonth}`, 20, 83);
 
   doc.line(20, 90, 190, 90);
 
   doc.setFontSize(12);
-  doc.text(`Przychod laczny: ${money(r.netTotal)}`, 20, 105);
-  doc.text(`Kwota miesieczna: ${money(r.netMonthly)}`, 20, 115);
-  doc.text(`Zlecenia dodatkowe: ${money(r.netOrders)}`, 20, 125);
-  doc.text(`Szkolenia wstepne: ${money(r.trainingAmount || 0)}`, 20, 135);
+  doc.text(`Przychod laczny: ${pdfMoney(r.netTotal)}`, 20, 105);
+  doc.text(`Kwota miesieczna: ${pdfMoney(r.netMonthly)}`, 20, 115);
+  doc.text(`Zlecenia dodatkowe: ${pdfMoney(r.netOrders)}`, 20, 125);
+  doc.text(`Szkolenia wstepne: ${pdfMoney(r.trainingAmount || 0)}`, 20, 135);
 
-  doc.text(`Koszty dodatkowe: ${money(r.costs)}`, 20, 150);
-  doc.text(`Koszt czasu pracy: ${money(r.timeCost)}`, 20, 160);
+  doc.text(`Koszty dodatkowe: ${pdfMoney(r.costs)}`, 20, 150);
+  doc.text(`Koszt czasu pracy: ${pdfMoney(r.timeCost)}`, 20, 160);
 
   doc.line(20, 168, 190, 168);
 
   doc.setFontSize(15);
-  doc.text(`Zysk po kosztach: ${money(r.profit)}`, 20, 182);
+  doc.text(`Zysk po kosztach: ${pdfMoney(r.profit)}`, 20, 182);
 
   doc.setFontSize(12);
   doc.text(`Godziny: ${minToText(r.minutes)}`, 20, 195);
-  doc.text(`Stawka efektywna: ${r.rate.toFixed(2)} zl/h`, 20, 205);
-  doc.text(`Rentownosc: ${r.rent}`, 20, 215);
+  doc.text(`Stawka efektywna: ${Number(r.rate || 0).toFixed(2)} zl/h`, 20, 205);
+  doc.text(`Rentownosc: ${cleanPdfText(r.rent)}`, 20, 215);
 
   doc.setFontSize(9);
   doc.text('Safety Service - raport wygenerowany automatycznie', 20, 285);
 
-  doc.save(`rentownosc-${r.name}-${selectedMonth}.pdf`);
+  doc.save(`rentownosc-${cleanFileName(r.name)}-${selectedMonth}.pdf`);
+}
+
+function pdfMoney(value) {
+  const n = Number(value || 0);
+  return `${n.toFixed(2)} zl`;
+}
+
+function cleanPdfText(value) {
+  return String(value || '')
+    .replaceAll('ą', 'a')
+    .replaceAll('ć', 'c')
+    .replaceAll('ę', 'e')
+    .replaceAll('ł', 'l')
+    .replaceAll('ń', 'n')
+    .replaceAll('ó', 'o')
+    .replaceAll('ś', 's')
+    .replaceAll('ż', 'z')
+    .replaceAll('ź', 'z')
+    .replaceAll('Ą', 'A')
+    .replaceAll('Ć', 'C')
+    .replaceAll('Ę', 'E')
+    .replaceAll('Ł', 'L')
+    .replaceAll('Ń', 'N')
+    .replaceAll('Ó', 'O')
+    .replaceAll('Ś', 'S')
+    .replaceAll('Ż', 'Z')
+    .replaceAll('Ź', 'Z');
+}
+
+function cleanFileName(value) {
+  return cleanPdfText(value).replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
 function loadImage(src) {
