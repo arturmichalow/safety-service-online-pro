@@ -96,23 +96,7 @@ export default function LoginPage({ searchParams }) {
           Zaloguj
         </button>
 
-        <a
-          href="/forgot-password"
-          style={{
-            display: 'block',
-            width: '100%',
-            marginTop: '14px',
-            padding: '12px',
-            textAlign: 'center',
-            borderRadius: '8px',
-            background: '#132734',
-            color: 'white',
-            fontWeight: 'bold',
-            textDecoration: 'none'
-          }}
-        >
-          Nie pamiętasz hasła?
-        </a>
+        
       </form>
     </div>
   );
