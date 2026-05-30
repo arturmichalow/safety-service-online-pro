@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import jsPDF from 'jspdf';
 
 const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['initialTrainings','Szkolenia wstępne'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
 const workTypes=['dokumentacja','audyt','szkolenie','dojazd','email','telefon','inne'];
@@ -266,7 +267,7 @@ return {
       <div className="card">Najbardziej rentowny<h2>{stats.best?.name||'-'}</h2></div>
     </div>
 
-    <SummaryTable rows={stats.rows}/>
+    <SummaryTable rows={stats.rows} selectedMonth={selectedMonth}/>
   </div>
 }
  {tab==='clients'&&<div className="panel"><div className="grid"><form className="card" onSubmit={saveCompany}><h2>Dodaj firmę</h2><input name="name" placeholder="Nazwa firmy" required/><input name="nip" placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/><input name="address" placeholder="Adres"/><input name="contactPerson" placeholder="Osoba kontaktowa"/><input name="phone" placeholder="Telefon"/><input name="email" placeholder="Email"/><input name="serviceType" placeholder="Typ obsługi"/><select name="assignedUserId"><option value="">Przypisz pracownika</option>{data.users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><select name="status"><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select><select name="billingType"><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select><input name="netAmount" type="number" placeholder="Kwota netto miesięcznie"/><input name="travelCost" type="number" placeholder="Koszt dojazdów"/><input name="extraCost" type="number" placeholder="Dodatkowe koszty"/><input name="extraCostDescription" placeholder="Opis dodatkowych kosztów / uwagi"/><button className="orange">Zapisz</button></form><div className="card"><h2>Baza firm</h2><div className="filterBar"><input placeholder="Szukaj firmy..." value={companySearch} onChange={e=>setCompanySearch(e.target.value)}/><select value={companySort} onChange={e=>setCompanySort(e.target.value)}><option value="name_asc">Nazwa A-Z</option><option value="name_desc">Nazwa Z-A</option><option value="money_desc">Największa kwota</option><option value="money_asc">Najmniejsza kwota</option></select><select value={companyStatus} onChange={e=>setCompanyStatus(e.target.value)}><option value="ALL">Wszystkie statusy</option><option value="ACTIVE">Aktywne</option><option value="PAUSED">Zawieszone</option><option value="INACTIVE">Nieaktywne</option></select></div><div className="muted">Widoczne firmy: {filteredCompanies.length} / {data.companies.length}</div><div className="tableWrap"><table><thead><tr><th>Status</th><th>Firma</th><th>NIP</th><th>Pracownik</th><th>Kwota miesięczna</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{filteredCompanies.map(c=><tr className="clickable" key={c.id} onClick={()=>setSelectedCompany(c)}><td><span className={'status '+c.status}></span></td><td>{c.name}</td><td>{c.nip||'-'}</td><td>{c.assignedUser?.name||'-'}</td><td>{money(c.netAmount)}</td><td>{c.extraCostDescription||'-'}</td><td><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();setSelectedCompany(c)}}>✏️</button><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();deleteCompany(c)}}>🗑️</button></td></tr>)}</tbody></table></div>{selectedCompany&&<CompanyDetails key={selectedCompany.id} company={selectedCompany} users={data.users} orders={data.extraOrders.filter(o=>o.companyId===selectedCompany.id)} onSubmit={updateCompany} onDelete={()=>deleteCompany(selectedCompany)}/>}</div></div></div>}
@@ -459,7 +460,7 @@ return {
  </div></main></div>
 }
 
-function SummaryTable({rows}){
+function SummaryTable({rows, selectedMonth}){
 
  const [sort,setSort]=useState({
   key:'profit',
@@ -556,6 +557,7 @@ function SummaryTable({rows}){
        <th onClick={()=>toggleSort('rent')} style={{cursor:'pointer'}}>
         Rentowność {arrow('rent')}
        </th>
+       <th>PDF</th>
       </tr>
      </thead>
 
@@ -576,6 +578,15 @@ function SummaryTable({rows}){
         <td>{money(r.profit||0)}</td>
         <td>{r.rate.toFixed(2)} zł/h</td>
         <td>{r.rent}</td>
+        <td>
+  <button
+    className="orange"
+    type="button"
+    onClick={() => generateProfitPdf(r, selectedMonth)}
+  >
+    PDF
+  </button>
+</td>
        </tr>
       )}
      </tbody>
@@ -845,3 +856,57 @@ function EmployeeCard({u,onEdit,onDelete}){return <div className="card employeeC
 function UsersPanel({data,editUser,setEditUser,addUser,saveUser,deleteUser}){return <div className="panel">{!editUser&&<><h1>Użytkownicy i role</h1><form className="card" onSubmit={addUser}><h2>Dodaj użytkownika</h2><div className="grid2"><input name="email" placeholder="Login nowego użytkownika" required/><input name="name" placeholder="Imię i nazwisko" required/><input name="password" type="password" placeholder="Hasło tymczasowe" required/><select name="role"><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select></div><h3>Uprawnienia</h3><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={k==='work'||k==='pwa'}/> {l}</label>)}</div><button>Dodaj użytkownika</button></form><h2>Lista użytkowników</h2>{data.users.map(u=><div className="card employeeCard" key={u.id}><div><h3>{u.name}</h3><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" onClick={()=>setEditUser(u)}>✏️</button><button className="light iconBtn" onClick={()=>deleteUser(u)}>🗑️</button></div></div>)}</>}{editUser&&<form className="card" onSubmit={saveUser}><h1>✏️ Edycja konta użytkownika</h1><button type="button" className="light" onClick={()=>setEditUser(null)}>← Wróć do listy użytkowników</button><div className="grid2"><input name="email" defaultValue={editUser.email}/><input name="name" defaultValue={editUser.name}/><select name="role" defaultValue={editUser.role}><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select><label><input name="active" type="checkbox" defaultChecked={editUser.active} style={{width:'auto'}}/> Konto aktywne</label></div><h2>Uprawnienia</h2><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={!!editUser.permissions?.[k]}/> {l}</label>)}</div><input name="password" type="password" placeholder="Nowe hasło — zostaw puste, jeśli nie chcesz zmieniać"/><button>Zapisz zmiany</button> <button type="button" className="red" onClick={()=>deleteUser(editUser)}>Usuń użytkownika</button></form>}</div>}
 function ChartPanel({title,rows,dataKey,color}){return <div className="panel"><h1>{title}</h1><div className="card chartBox"><ResponsiveContainer width="100%" height="100%"><BarChart data={rows}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip/><Bar dataKey={dataKey} fill={color}/></BarChart></ResponsiveContainer></div></div>}
 function AuditTable(){return <div className="tableWrap"><table><thead><tr><th>id</th><th>event_time</th><th>username</th><th>action</th><th>details</th></tr></thead><tbody><tr><td>1</td><td>{new Date().toISOString()}</td><td>admin</td><td>LOGOWANIE</td><td>Udane logowanie</td></tr></tbody></table></div>}
+async function generateProfitPdf(r, selectedMonth) {
+  const doc = new jsPDF();
+
+  const logo = await loadImage('/logo.png');
+
+  if (logo) {
+    doc.addImage(logo, 'PNG', 55, 12, 100, 35);
+  }
+
+  doc.setFontSize(18);
+  doc.text('Raport rentownosci klienta', 20, 60);
+
+  doc.setFontSize(11);
+  doc.text(`Klient: ${r.name}`, 20, 75);
+  doc.text(`Okres: ${selectedMonth}`, 20, 83);
+
+  doc.line(20, 90, 190, 90);
+
+  doc.setFontSize(12);
+  doc.text(`Przychod laczny: ${money(r.netTotal)}`, 20, 105);
+  doc.text(`Kwota miesieczna: ${money(r.netMonthly)}`, 20, 115);
+  doc.text(`Zlecenia dodatkowe: ${money(r.netOrders)}`, 20, 125);
+  doc.text(`Szkolenia wstepne: ${money(r.trainingAmount || 0)}`, 20, 135);
+
+  doc.text(`Koszty dodatkowe: ${money(r.costs)}`, 20, 150);
+  doc.text(`Koszt czasu pracy: ${money(r.timeCost)}`, 20, 160);
+
+  doc.line(20, 168, 190, 168);
+
+  doc.setFontSize(15);
+  doc.text(`Zysk po kosztach: ${money(r.profit)}`, 20, 182);
+
+  doc.setFontSize(12);
+  doc.text(`Godziny: ${minToText(r.minutes)}`, 20, 195);
+  doc.text(`Stawka efektywna: ${r.rate.toFixed(2)} zl/h`, 20, 205);
+  doc.text(`Rentownosc: ${r.rent}`, 20, 215);
+
+  doc.setFontSize(9);
+  doc.text('Safety Service - raport wygenerowany automatycznie', 20, 285);
+
+  doc.save(`rentownosc-${r.name}-${selectedMonth}.pdf`);
+}
+
+function loadImage(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+
+    img.src = src;
+  });
+}
