@@ -46,7 +46,12 @@ function inSelectedMonth(date){
  const [shopOrder,setShopOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',margin:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',status:'OPEN'});
  const [training,setTraining]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',time:'1:00',unitAmount:'109',peopleCount:'1',netAmount:'109',extraCostDescription:'',description:'',status:'DONE'});
  const [editingWorkEntry,setEditingWorkEntry]=useState(null);
-  const myDayEntries=useMemo(()=>{
+ const [quickNotesOpen,setQuickNotesOpen]=useState(false);
+ const [quickNotes,setQuickNotes]=useState([]);
+ const [quickNoteContent,setQuickNoteContent]=useState('');
+ const [quickNoteCompanyId,setQuickNoteCompanyId]=useState('');
+ const [quickNotesLoading,setQuickNotesLoading]=useState(false);
+ const myDayEntries=useMemo(()=>{
   return (data.workEntries||[])
    .filter(entry=>{
     const entryDate=String(entry.date||'').slice(0,10);
@@ -66,7 +71,25 @@ function inSelectedMonth(date){
   return data.companies.find(company=>company.id===entry.companyId)?.name||'Nieznana firma';
  }
  async function load(){const r=await fetch('/api/data',{cache:'no-store'});const j=await r.json();setData({...j,extraOrders:j.extraOrders||[]});setSelectedCompany(prev=>prev?j.companies.find(c=>c.id===prev.id)||prev:j.companies?.[0]||null)}
- useEffect(()=>{load()},[]);
+ async function loadQuickNotes(){
+ try{
+  setQuickNotesLoading(true);
+
+  const notes=await jsonFetch('/api/quick-notes',{
+   cache:'no-store'
+  });
+
+  setQuickNotes(Array.isArray(notes)?notes:[]);
+ }catch(err){
+  console.error('Błąd pobierania notatek:',err);
+ }finally{
+  setQuickNotesLoading(false);
+ }
+}
+ useEffect(()=>{
+ load();
+ loadQuickNotes();
+},[]);
  const stats=useMemo(()=>{const rows=data.companies.map(c=>{
   const entries=data.workEntries.filter(w=>w.companyId===c.id && inSelectedMonth(w.date));
 const orders=data.extraOrders.filter(o=>o.companyId===c.id && inSelectedMonth(o.date));
@@ -306,6 +329,33 @@ async function deleteWorkEntry(entry){
   await load();
 
   alert('Wpis został usunięty.');
+ }catch(err){
+  alert(err.message);
+ }
+}
+ async function addQuickNote(){
+ const content=String(quickNoteContent||'').trim();
+
+ if(!content){
+  return alert('Wpisz treść notatki.');
+ }
+
+ try{
+  await jsonFetch('/api/quick-notes',{
+   method:'POST',
+   headers:{
+    'Content-Type':'application/json'
+   },
+   body:JSON.stringify({
+    content,
+    companyId:quickNoteCompanyId||form.companyId||null
+   })
+  });
+
+  setQuickNoteContent('');
+  setQuickNoteCompanyId('');
+
+  await loadQuickNotes();
  }catch(err){
   alert(err.message);
  }
@@ -837,7 +887,296 @@ async function deleteWorkEntry(entry){
   </div>
 } 
  {tab==='pwa'&&<div className="panel"><h1>Aplikacja mobilna PWA</h1><p><b>Android:</b> Chrome → trzy kropki → Dodaj do ekranu głównego.</p><p><b>iPhone:</b> Safari → Udostępnij → Do ekranu początkowego.</p></div>}
- </div></main></div>
+ </div>
+
+ <button
+  type="button"
+  onClick={()=>setQuickNotesOpen(true)}
+  style={{
+   position:'fixed',
+   right:20,
+   bottom:20,
+   zIndex:999,
+   width:58,
+   height:58,
+   borderRadius:'50%',
+   border:'none',
+   background:'#ff5a14',
+   color:'#fff',
+   fontSize:25,
+   cursor:'pointer',
+   boxShadow:'0 8px 24px rgba(0,0,0,0.25)'
+  }}
+ >
+  📝
+ </button>
+
+ {quickNotesOpen&&
+  <div
+   style={{
+    position:'fixed',
+    top:0,
+    right:0,
+    width:'min(420px, 100vw)',
+    height:'100vh',
+    background:'#fff',
+    zIndex:1000,
+    boxShadow:'-8px 0 30px rgba(0,0,0,0.25)',
+    padding:20,
+    overflowY:'auto'
+   }}
+  >
+   <div className="row between">
+    <h2>📝 Szybkie notatki</h2>
+
+    <button
+     type="button"
+     className="light"
+     onClick={()=>setQuickNotesOpen(false)}
+    >
+     ✕
+    </button>
+   </div>
+
+   <div className="card">
+    <textarea
+     placeholder="Wpisz szybką notatkę..."
+     value={quickNoteContent}
+     onChange={e=>setQuickNoteContent(e.target.value)}
+     style={{minHeight:120}}
+    />
+
+    <select
+     value={quickNoteCompanyId}
+     onChange={e=>setQuickNoteCompanyId(e.target.value)}
+    >
+     <option value="">Firma opcjonalnie</option>
+
+     {data.companies
+      .filter(c=>c.status!=='INACTIVE')
+      .map(c=>
+       <option key={c.id} value={c.id}>
+        {c.name}
+       </option>
+      )}
+    </select>
+
+    <button
+     type="button"
+     className="orange"
+     onClick={addQuickNote}
+    >
+     Zapisz notatkę
+    </button>
+   </div>
+
+   <div style={{marginTop:20}}>
+    <h3>Moje notatki</h3>
+
+    {quickNotesLoading&&
+     <p className="muted">
+      Ładowanie...
+     </p>
+    }
+
+    {!quickNotesLoading&&quickNotes.length===0&&
+     <p className="muted">
+      Brak notatek.
+     </p>
+    }
+
+    {quickNotes.map(note=>
+     <div
+      key={note.id}
+      className="card"
+      style={{marginBottom:12}}
+     >
+      <div style={{whiteSpace:'pre-wrap'}}>
+       {note.content}
+      </div>
+
+      <div
+       className="muted"
+       style={{marginTop:8}}
+      >
+       {note.company?.name||'Bez przypisanej firmy'}
+      </div>
+
+      <div className="muted">
+       {new Date(note.createdAt).toLocaleString('pl-PL')}
+      </div>
+     </div>
+    )}
+   </div>
+  </div>
+ }
+
+ </main>
+ </div>
+}
+
+<button
+ type="button"
+ onClick={()=>setQuickNotesOpen(true)}
+ style={{
+  position:'fixed',
+  right:20,
+  bottom:20,
+  zIndex:999,
+  width:58,
+  height:58,
+  borderRadius:'50%',
+  border:'none',
+  background:'#ff5a14',
+  color:'#fff',
+  fontSize:25,
+  cursor:'pointer',
+  boxShadow:'0 8px 24px rgba(0,0,0,0.25)'
+ }}
+ title="Szybkie notatki"
+>
+ 📝
+</button>
+
+{quickNotesOpen&&
+ <div
+  style={{
+   position:'fixed',
+   top:0,
+   right:0,
+   width:'min(420px, 100vw)',
+   height:'100vh',
+   background:'#fff',
+   zIndex:1000,
+   boxShadow:'-8px 0 30px rgba(0,0,0,0.25)',
+   padding:20,
+   overflowY:'auto'
+  }}
+ >
+  <div
+   className="row between"
+   style={{
+    alignItems:'center',
+    marginBottom:18
+   }}
+  >
+   <h2 style={{margin:0}}>
+    📝 Szybkie notatki
+   </h2>
+
+   <button
+    type="button"
+    className="light"
+    onClick={()=>setQuickNotesOpen(false)}
+   >
+    ✕
+   </button>
+  </div>
+
+  <div className="card">
+   <h3>Dodaj szybką notatkę</h3>
+
+   <textarea
+    placeholder="Np. zadzwonić do klienta, poprawić dokument, przygotować mail..."
+    value={quickNoteContent}
+    onChange={e=>setQuickNoteContent(e.target.value)}
+    style={{
+     minHeight:120,
+     width:'100%'
+    }}
+   />
+
+   <select
+    value={quickNoteCompanyId}
+    onChange={e=>setQuickNoteCompanyId(e.target.value)}
+   >
+    <option value="">
+     Firma opcjonalnie
+    </option>
+
+    {data.companies
+     .filter(c=>c.status!=='INACTIVE')
+     .map(c=>
+      <option key={c.id} value={c.id}>
+       {c.name}
+      </option>
+     )}
+   </select>
+
+   <button
+    type="button"
+    className="orange"
+    onClick={addQuickNote}
+   >
+    Zapisz notatkę
+   </button>
+  </div>
+
+  <div style={{marginTop:20}}>
+   <h3>
+    Moje notatki
+   </h3>
+
+   {quickNotesLoading&&
+    <p className="muted">
+     Ładowanie notatek...
+    </p>
+   }
+
+   {!quickNotesLoading&&quickNotes.length===0&&
+    <p className="muted">
+     Nie masz jeszcze żadnych szybkich notatek.
+    </p>
+   }
+
+   {!quickNotesLoading&&quickNotes.map(note=>
+    <div
+     key={note.id}
+     className="card"
+     style={{
+      marginBottom:12,
+      borderLeft:'4px solid #ff5a14'
+     }}
+    >
+     <div
+      style={{
+       fontSize:15,
+       whiteSpace:'pre-wrap',
+       wordBreak:'break-word'
+      }}
+     >
+      {note.content}
+     </div>
+
+     <div
+      className="muted"
+      style={{
+       marginTop:10,
+       fontSize:12
+      }}
+     >
+      {note.company?.name
+       ? `Firma: ${note.company.name}`
+       : 'Bez przypisanej firmy'}
+     </div>
+
+     <div
+      className="muted"
+      style={{
+       marginTop:4,
+       fontSize:12
+      }}
+     >
+      Utworzono: {new Date(note.createdAt).toLocaleString('pl-PL')}
+     </div>
+    </div>
+   )}
+  </div>
+ </div>
+}
+
+</main>
+</div>
 }
 
 function SummaryTable({rows, selectedMonth}){
