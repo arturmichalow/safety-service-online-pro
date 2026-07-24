@@ -41,7 +41,7 @@ function inSelectedMonth(date){
  const [selectedCompany,setSelectedCompany]=useState(null);
  const [editUser,setEditUser]=useState(null);
  const [ai,setAi]=useState('');
- const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
+ const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
  const [workCompanySearch,setWorkCompanySearch]=useState('');
  const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',type:'inne',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:'',status:'OPEN'});
  const [shopOrder,setShopOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',margin:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',status:'OPEN'});
@@ -51,6 +51,7 @@ function inSelectedMonth(date){
  const [quickNotes,setQuickNotes]=useState([]);
  const [quickNoteContent,setQuickNoteContent]=useState('');
  const [quickNoteCompanyId,setQuickNoteCompanyId]=useState('');
+ const [quickNoteNewCompanyName,setQuickNoteNewCompanyName]=useState('');
  const [quickNotesLoading,setQuickNotesLoading]=useState(false);
  const myDayEntries=useMemo(()=>{
   return (data.workEntries||[])
@@ -194,28 +195,57 @@ return {
  async function saveCompany(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());const saved=await jsonFetch('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setSelectedCompany(saved);formEl.reset();await load();alert('Firma dodana.')}catch(err){alert(err.message)}}
  async function updateCompany(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());const saved=await jsonFetch('/api/companies/'+selectedCompany.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setSelectedCompany(saved);await load();alert('Dane firmy zapisane.')}catch(err){alert(err.message)}}
  async function deleteCompany(c){if(!c)return;if(!confirm(`Czy na pewno usunąć tę firmę: ${c.name}?`))return;try{await jsonFetch('/api/companies/'+c.id,{method:'DELETE'});setSelectedCompany(null);await load();alert('Firma usunięta.')}catch(err){alert(err.message)}}
+ function normalizeCompanyName(value){
+  return String(value||'').toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim();
+ }
+ function addManualCompanyToForm(){
+  const name=String(form.newCompanyName||'').replace(/\s+/g,' ').trim();
+  if(!name)return;
+
+  const normalized=normalizeCompanyName(name);
+  const existing=(data.companies||[]).find(c=>normalizeCompanyName(c.name)===normalized);
+  if(existing){
+   if(!(form.selectedCompanyIds||[]).includes(existing.id)){
+    setForm({...form,selectedCompanyIds:[...(form.selectedCompanyIds||[]),existing.id],newCompanyName:''});
+   }else{
+    setForm({...form,newCompanyName:''});
+   }
+   return;
+  }
+
+  const manual=form.manualCompanyNames||[];
+  if(manual.some(companyName=>normalizeCompanyName(companyName)===normalized)){
+   setForm({...form,newCompanyName:''});
+   return;
+  }
+
+  setForm({...form,manualCompanyNames:[...manual,name],newCompanyName:''});
+ }
  async function addWork(){
  try{
   const description=String(form.description||'').trim();
   const minutes=parseTime(form.time);
-  const newCompanyName=String(form.newCompanyName||'').trim();
+  const pendingCompanyName=String(form.newCompanyName||'').replace(/\s+/g,' ').trim();
   const selectedIds=Array.from(new Set(form.selectedCompanyIds||[]));
+  const manualCompanyNames=[...(form.manualCompanyNames||[])];
+  if(pendingCompanyName&&!manualCompanyNames.some(name=>normalizeCompanyName(name)===normalizeCompanyName(pendingCompanyName))){
+   manualCompanyNames.push(pendingCompanyName);
+  }
   const customType=String(form.customType||'').trim();
   const resolvedType=form.type==='własna czynność'?customType:form.type;
   const extraCost=Number(form.additionalCost||0);
   const netAmount=Number(form.netAmount||0);
-  const normalizedNewCompany=newCompanyName.toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim();
 
   if(!form.date)return alert('Wybierz datę.');
-  if(selectedIds.length===0&&!newCompanyName)return alert('Wybierz przynajmniej jedną firmę albo wpisz nową firmę.');
+  if(selectedIds.length===0&&manualCompanyNames.length===0)return alert('Wybierz przynajmniej jedną firmę albo wpisz nową firmę.');
   if(!resolvedType)return alert('Wybierz czynność albo wpisz nazwę własnej czynności.');
   if(!description)return alert('Wpisz krótki opis wykonywanych prac.');
   if(minutes<=0)return alert('Wpisz prawidłowy czas pracy.');
 
-  if(newCompanyName){
-   const duplicate=data.companies.find(c=>String(c.name||'').toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim()===normalizedNewCompany);
-   if(duplicate)return alert('Firma już istnieje w bazie. Wybierz ją z listy.');
-  }
+  const duplicatedManual=manualCompanyNames.find(name=>
+   (data.companies||[]).some(c=>normalizeCompanyName(c.name)===normalizeCompanyName(name))
+  );
+  if(duplicatedManual)return alert(`Firma „${duplicatedManual}” już istnieje w bazie. Wybierz ją z listy.`);
 
   if(form.billingMode==='ONE_TIME'){
    if(netAmount<=0)return alert('Wpisz kwotę netto za zlecenie większą od zera.');
@@ -223,12 +253,12 @@ return {
   }
 
   const companyIds=[...selectedIds];
-  if(newCompanyName){
+  for(const companyName of manualCompanyNames){
    const created=await jsonFetch('/api/companies',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-     name:newCompanyName,
+     name:companyName,
      status:'ACTIVE',
      billingType:form.billingMode==='ONE_TIME'?'ONE_TIME':'MONTHLY',
      netAmount:0,
@@ -286,6 +316,7 @@ return {
    date:new Date().toISOString().slice(0,10),
    companyId:'',
    selectedCompanyIds:[],
+   manualCompanyNames:[],
    newCompanyName:'',
    type:'dokumentacja',
    customType:'',
@@ -314,6 +345,7 @@ return {
   date:String(entry.date||'').slice(0,10),
   companyId:entry.companyId||'',
   selectedCompanyIds:[],
+  manualCompanyNames:[],
   newCompanyName:'',
   type:entry.type||'inne',
   customType:'',
@@ -342,6 +374,7 @@ function cancelEditWorkEntry(){
   date:new Date().toISOString().slice(0,10),
   companyId:'',
   selectedCompanyIds:[],
+  manualCompanyNames:[],
   newCompanyName:'',
   type:'dokumentacja',
   customType:'',
@@ -441,12 +474,40 @@ async function deleteWorkEntry(entry){
 }
  async function addQuickNote(){
  const content=String(quickNoteContent||'').trim();
+ const newCompanyName=String(quickNoteNewCompanyName||'').trim();
 
  if(!content){
   return alert('Wpisz treść notatki.');
  }
 
  try{
+  let companyId=quickNoteCompanyId||form.companyId||null;
+
+  if(newCompanyName){
+    const duplicate=(data.companies||[]).find(company=>
+    String(company.name||'').toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim()===normalizedNewCompany
+   );
+
+   if(duplicate){
+    return alert('Firma już istnieje w bazie. Wybierz ją z listy.');
+   }
+
+   const created=await jsonFetch('/api/companies',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+     name:newCompanyName,
+     status:'ACTIVE',
+     billingType:'MONTHLY',
+     netAmount:0,
+     travelCost:0,
+     extraCost:0
+    })
+   });
+
+   companyId=created.id;
+  }
+
   await jsonFetch('/api/quick-notes',{
    method:'POST',
    headers:{
@@ -454,14 +515,15 @@ async function deleteWorkEntry(entry){
    },
    body:JSON.stringify({
     content,
-    companyId:quickNoteCompanyId||form.companyId||null
+    companyId
    })
   });
 
   setQuickNoteContent('');
   setQuickNoteCompanyId('');
+  setQuickNoteNewCompanyName('');
 
-  await loadQuickNotes();
+  await Promise.all([loadQuickNotes(),load()]);
  }catch(err){
   alert(err.message);
  }
@@ -698,11 +760,35 @@ async function deleteQuickNote(note){
      </Field>}
 
      {!editingWorkEntry&&<Field label="3. Wpisz firmę ręcznie, jeżeli nie ma jej na liście">
-      <input
-       placeholder="Nazwa nowej firmy"
-       value={form.newCompanyName}
-       onChange={e=>setForm({...form,newCompanyName:e.target.value})}
-      />
+      <div>
+       <input
+        placeholder="Nazwa nowej firmy — zatwierdź Enterem"
+        value={form.newCompanyName}
+        onChange={e=>setForm({...form,newCompanyName:e.target.value})}
+        onKeyDown={e=>{
+         if(e.key==='Enter'){
+          e.preventDefault();
+          addManualCompanyToForm();
+         }
+        }}
+        onBlur={()=>{
+         if(String(form.newCompanyName||'').trim())addManualCompanyToForm();
+        }}
+       />
+       {(form.manualCompanyNames||[]).length>0&&
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
+         {(form.manualCompanyNames||[]).map(companyName=><span key={companyName} style={{display:'inline-flex',alignItems:'center',gap:8,padding:'7px 10px',border:'1px solid #cbd8e5',borderRadius:999,background:'#f5f8fb',fontWeight:700}}>
+          {companyName}
+          <button
+           type="button"
+           aria-label={`Usuń firmę ${companyName}`}
+           onClick={()=>setForm({...form,manualCompanyNames:(form.manualCompanyNames||[]).filter(name=>name!==companyName)})}
+           style={{border:0,background:'transparent',padding:0,cursor:'pointer',fontSize:16,lineHeight:1}}
+          >×</button>
+         </span>)}
+        </div>
+       }
+      </div>
      </Field>}
 
      <Field label="4. Numer zlecenia / PO">
@@ -1025,11 +1111,15 @@ async function deleteQuickNote(note){
      style={{minHeight:120}}
     />
 
+    <label style={{display:'block',fontWeight:700,marginTop:8,marginBottom:5}}>Firma z listy (opcjonalnie)</label>
     <select
      value={quickNoteCompanyId}
-     onChange={e=>setQuickNoteCompanyId(e.target.value)}
+     onChange={e=>{
+      setQuickNoteCompanyId(e.target.value);
+      if(e.target.value)setQuickNoteNewCompanyName('');
+     }}
     >
-     <option value="">Firma opcjonalnie</option>
+     <option value="">Wybierz firmę opcjonalnie</option>
 
      {data.companies
       .filter(c=>c.status!=='INACTIVE')
@@ -1039,6 +1129,23 @@ async function deleteQuickNote(note){
        </option>
       )}
     </select>
+
+    <label style={{display:'block',fontWeight:700,marginTop:10,marginBottom:5}}>Firma spoza listy (opcjonalnie)</label>
+    <input
+     type="text"
+     placeholder="Wpisz nazwę nowej firmy"
+     value={quickNoteNewCompanyName}
+     onChange={e=>{
+      setQuickNoteNewCompanyName(e.target.value);
+      if(e.target.value)setQuickNoteCompanyId('');
+     }}
+     onKeyDown={e=>{
+      if(e.key==='Enter'){
+       e.preventDefault();
+       addQuickNote();
+      }
+     }}
+    />
 
     <button
      type="button"
