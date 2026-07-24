@@ -5,7 +5,7 @@ import jsPDF from 'jspdf';
 
 const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['initialTrainings','Szkolenia wstępne'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
 const workTypes=['dokumentacja','audyt','szkolenie','dojazd','email','telefon','inne'];
-const orderTypes=['szkolenie','audyt','konsultacje','inne','własna czynność'];
+const orderTypes=['szkolenie','audyt','ratownik','pomiary oświetlenia','dokumentacja','konsultacje','wypadek','inne'];
 function minToText(m){const h=Math.floor((m||0)/60),mm=(m||0)%60;return `${h}h ${mm}m`}
 function minutesToInput(minutes){
  const total=Number(minutes||0);
@@ -41,8 +41,9 @@ function inSelectedMonth(date){
  const [selectedCompany,setSelectedCompany]=useState(null);
  const [editUser,setEditUser]=useState(null);
  const [ai,setAi]=useState('');
- const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',type:'dokumentacja',title:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
- const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyIds:[],newCompanyName:'',type:'inne',customType:'',description:'',time:'',orderNumber:'',billingMode:'MONTHLY',netAmount:'',extraCostName:'',extraCost:'',extraCostDescription:'',status:'OPEN'});
+ const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
+ const [workCompanySearch,setWorkCompanySearch]=useState('');
+ const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',type:'inne',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:'',status:'OPEN'});
  const [shopOrder,setShopOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',margin:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',status:'OPEN'});
  const [training,setTraining]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',time:'1:00',unitAmount:'109',peopleCount:'1',netAmount:'109',extraCostDescription:'',description:'',status:'DONE'});
  const [editingWorkEntry,setEditingWorkEntry]=useState(null);
@@ -172,56 +173,136 @@ return {
  async function saveCompany(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());const saved=await jsonFetch('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setSelectedCompany(saved);formEl.reset();await load();alert('Firma dodana.')}catch(err){alert(err.message)}}
  async function updateCompany(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());const saved=await jsonFetch('/api/companies/'+selectedCompany.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setSelectedCompany(saved);await load();alert('Dane firmy zapisane.')}catch(err){alert(err.message)}}
  async function deleteCompany(c){if(!c)return;if(!confirm(`Czy na pewno usunąć tę firmę: ${c.name}?`))return;try{await jsonFetch('/api/companies/'+c.id,{method:'DELETE'});setSelectedCompany(null);await load();alert('Firma usunięta.')}catch(err){alert(err.message)}}
- async function addWork(){try{
-  let companyId=form.companyId;
-  const newCompanyName=String(form.newCompanyName||'').trim();
+ async function addWork(){
+ try{
+  const description=String(form.description||'').trim();
   const minutes=parseTime(form.time);
+  const newCompanyName=String(form.newCompanyName||'').trim();
+  const selectedIds=Array.from(new Set(form.selectedCompanyIds||[]));
+  const customType=String(form.customType||'').trim();
+  const resolvedType=form.type==='własna czynność'?customType:form.type;
+  const extraCost=Number(form.additionalCost||0);
+  const netAmount=Number(form.netAmount||0);
+  const normalizedNewCompany=newCompanyName.toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim();
 
-  // Jeśli pracownik wpisuje firmę spoza listy, traktujemy to jako zlecenie dodatkowe.
-  // Dzięki temu można wpisać kwotę za zlecenie i firma pojawi się w podsumowaniu.
-  if(!companyId&&newCompanyName){
-    if(!form.time)return alert('Wpisz czas pracy.');
-    if(!form.netAmount)return alert('Wpisz kwotę za zlecenie dla nowej firmy.');
-    const created=await jsonFetch('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newCompanyName,status:'ACTIVE',billingType:'ONE_TIME',netAmount:0,travelCost:0,extraCost:0})});
-    companyId=created.id;
-    await jsonFetch('/api/extra-orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      companyId,
-      date:form.date,
-      title:form.description?.trim()||form.type||'Zlecenie z panelu pracownika',
-      type:form.type||'inne',
-      description:form.description||'',
-      netAmount:Number(form.netAmount||0),
-      travelCost:0,
-      extraCost:Number(form.additionalCost||0),
-      extraCostDescription:form.additionalCostDescription||null,
-      minutes,
-      orderNumber:form.orderNumber||null,
-      status:'DONE'
-    })});
-    setForm({...form,companyId:'',newCompanyName:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
-    await load();
-    alert('Dodano zlecenie dla nowej firmy i ujęto je w podsumowaniu.');
-    return;
+  if(!form.date)return alert('Wybierz datę.');
+  if(selectedIds.length===0&&!newCompanyName)return alert('Wybierz przynajmniej jedną firmę albo wpisz nową firmę.');
+  if(!resolvedType)return alert('Wybierz czynność albo wpisz nazwę własnej czynności.');
+  if(!description)return alert('Wpisz krótki opis wykonywanych prac.');
+  if(minutes<=0)return alert('Wpisz prawidłowy czas pracy.');
+
+  if(newCompanyName){
+   const duplicate=data.companies.find(c=>String(c.name||'').toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim()===normalizedNewCompany);
+   if(duplicate)return alert('Firma już istnieje w bazie. Wybierz ją z listy.');
   }
 
-  if(!companyId||!form.time)return alert('Wybierz firmę albo wpisz nową firmę oraz czas.');
-  await jsonFetch('/api/work',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,companyId,title:form.description?.trim()||form.type,minutes,travelMinutes:parseTime(form.travelTime),additionalCost:Number(form.additionalCost||0),additionalCostDescription:form.additionalCostDescription})});
-  setForm({...form,companyId:'',newCompanyName:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
-  await load();alert('Dodano wpis pracy.');
- }catch(err){alert(err.message)}}
+  if(form.billingMode==='ONE_TIME'){
+   if(netAmount<=0)return alert('Wpisz kwotę netto za zlecenie większą od zera.');
+   if(extraCost>0&&!String(form.extraCostName||'').trim())return alert('Wpisz nazwę dodatkowego kosztu.');
+  }
+
+  const companyIds=[...selectedIds];
+  if(newCompanyName){
+   const created=await jsonFetch('/api/companies',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+     name:newCompanyName,
+     status:'ACTIVE',
+     billingType:form.billingMode==='ONE_TIME'?'ONE_TIME':'MONTHLY',
+     netAmount:0,
+     travelCost:0,
+     extraCost:0
+    })
+   });
+   companyIds.push(created.id);
+  }
+
+  if(form.billingMode==='MONTHLY'){
+   await Promise.all(companyIds.map(companyId=>jsonFetch('/api/work',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+     date:form.date,
+     companyId,
+     orderNumber:form.orderNumber||null,
+     type:resolvedType,
+     title:description,
+     description,
+     minutes,
+     travelMinutes:parseTime(form.travelTime),
+     additionalCost:0,
+     additionalCostDescription:null
+    })
+   })));
+  }else{
+   const costDescription=[
+    String(form.extraCostName||'').trim(),
+    String(form.additionalCostDescription||'').trim()
+   ].filter(Boolean).join(' — ')||null;
+
+   await Promise.all(companyIds.map(companyId=>jsonFetch('/api/extra-orders',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+     companyId,
+     date:form.date,
+     title:description,
+     type:resolvedType,
+     description,
+     netAmount,
+     travelCost:0,
+     extraCost,
+     extraCostDescription:costDescription,
+     minutes,
+     orderNumber:form.orderNumber||null,
+     status:'DONE'
+    })
+   })));
+  }
+
+  setForm({
+   date:new Date().toISOString().slice(0,10),
+   companyId:'',
+   selectedCompanyIds:[],
+   newCompanyName:'',
+   type:'dokumentacja',
+   customType:'',
+   title:'',
+   description:'',
+   time:'',
+   travelTime:'',
+   billingMode:'MONTHLY',
+   additionalCost:'',
+   extraCostName:'',
+   additionalCostDescription:'',
+   orderNumber:'',
+   netAmount:''
+  });
+  setWorkCompanySearch('');
+  await load();
+  alert(companyIds.length>1?`Zapisano wpisy dla ${companyIds.length} firm.`:'Wpis został zapisany.');
+ }catch(err){
+  alert(err.message);
+ }
+}
  function startEditWorkEntry(entry){
  setEditingWorkEntry(entry);
 
  setForm({
   date:String(entry.date||'').slice(0,10),
   companyId:entry.companyId||'',
+  selectedCompanyIds:[],
   newCompanyName:'',
   type:entry.type||'inne',
+  customType:'',
   title:entry.title||'',
   description:entry.description||'',
   time:minutesToInput(entry.minutes),
   travelTime:minutesToInput(entry.travelMinutes),
+  billingMode:'MONTHLY',
   additionalCost:String(entry.additionalCost||''),
+  extraCostName:'',
   additionalCostDescription:entry.additionalCostDescription||'',
   orderNumber:entry.orderNumber||'',
   netAmount:''
@@ -239,13 +320,17 @@ function cancelEditWorkEntry(){
  setForm({
   date:new Date().toISOString().slice(0,10),
   companyId:'',
+  selectedCompanyIds:[],
   newCompanyName:'',
   type:'dokumentacja',
+  customType:'',
   title:'',
   description:'',
   time:'',
   travelTime:'',
+  billingMode:'MONTHLY',
   additionalCost:'',
+  extraCostName:'',
   additionalCostDescription:'',
   orderNumber:'',
   netAmount:''
@@ -372,7 +457,9 @@ async function deleteWorkEntry(entry){
   description:note.content||'',
   time:'',
   travelTime:'',
+  billingMode:'MONTHLY',
   additionalCost:'',
+  extraCostName:'',
   additionalCostDescription:'',
   orderNumber:'',
   netAmount:''
@@ -407,44 +494,17 @@ async function deleteQuickNote(note){
  async function addExtraOrder(e){
  e.preventDefault();
  try{
-  const companyIds=Array.isArray(order.companyIds)?order.companyIds:[];
-  const newCompanyName=String(order.newCompanyName||'').trim().replace(/\s+/g,' ');
-  const minutes=parseTime(order.time);
-  const type=order.type==='własna czynność'?String(order.customType||'').trim():order.type;
-  const billingMode=order.billingMode||'MONTHLY';
-  const netAmount=Number(order.netAmount||0);
-  const extraCost=Number(order.extraCost||0);
-
-  if(companyIds.length===0&&!newCompanyName)return alert('Wybierz co najmniej jedną firmę albo wpisz nową firmę.');
-  if(!order.date)return alert('Wybierz datę zlecenia.');
-  if(!type)return alert('Wybierz czynność albo wpisz własną nazwę czynności.');
-  if(!String(order.description||'').trim())return alert('Wpisz krótki opis wykonywanych prac.');
-  if(minutes<=0)return alert('Wpisz prawidłowy czas pracy.');
-  if(billingMode==='ONE_TIME'&&netAmount<=0)return alert('Wpisz kwotę netto za zlecenie.');
-  if(extraCost>0&&!String(order.extraCostName||'').trim())return alert('Wpisz nazwę dodatkowego kosztu.');
-
-  const result=await jsonFetch('/api/extra-orders',{
-   method:'POST',
-   headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({
-    ...order,
-    companyIds,
-    newCompanyName,
-    type,
-    title:type,
-    minutes,
-    billingMode,
-    netAmount:billingMode==='ONE_TIME'?netAmount:0,
-    extraCost:billingMode==='ONE_TIME'?extraCost:0,
-    extraCostName:billingMode==='ONE_TIME'?String(order.extraCostName||'').trim():null,
-    extraCostDescription:billingMode==='ONE_TIME'?String(order.extraCostDescription||'').trim():null
-   })
-  });
-
-  setOrder({date:new Date().toISOString().slice(0,10),companyIds:[],newCompanyName:'',type:'inne',customType:'',description:'',time:'',orderNumber:'',billingMode:'MONTHLY',netAmount:'',extraCostName:'',extraCost:'',extraCostDescription:'',status:'OPEN'});
+  let companyId=order.companyId;
+  const newCompanyName=String(order.newCompanyName||'').trim();
+  if(!companyId&&newCompanyName){
+   const created=await jsonFetch('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newCompanyName,status:'ACTIVE',billingType:'ONE_TIME',netAmount:0,travelCost:0,extraCost:0})});
+   companyId=created.id;
+  }
+  if(!companyId||!order.title)return alert('Wybierz firmę albo wpisz nową firmę i wpisz nazwę zlecenia.');
+  await jsonFetch('/api/extra-orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...order,companyId,minutes:parseTime(order.time)})});
+  setOrder({...order,companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:''});
   await load();
-  const count=Number(result?.count||1);
-  alert(count>1?`Zapisano zlecenia dla ${count} firm.`:'Zlecenie zostało zapisane.');
+  alert('Dodano zlecenie dodatkowe.');
  }catch(err){alert(err.message)}
 }
  async function addInitialTraining(e){e.preventDefault();try{
@@ -547,241 +607,141 @@ async function deleteQuickNote(note){
  {tab==='workerStats'&&<WorkerStatsPanel data={data}/>}
   {tab==='work'&&
   <div className="panel">
-
-   <div className="card" style={{maxWidth:760}}>
+   <div className="card" style={{maxWidth:900}}>
     <h1>Panel pracownika</h1>
+
     {editingWorkEntry&&
- <div
-  className="warnBox"
-  style={{marginBottom:16}}
- >
-  Edytujesz istniejący wpis. Po wprowadzeniu zmian kliknij „Zapisz zmiany”.
- </div>
-}
-
-    <input
-     type="date"
-     value={form.date}
-     onChange={e=>setForm({...form,date:e.target.value})}
-    />
-
-    <select
-     value={form.companyId}
-     onChange={e=>setForm({
-      ...form,
-      companyId:e.target.value,
-      newCompanyName:e.target.value?'':form.newCompanyName,
-      netAmount:e.target.value?'':form.netAmount
-     })}
-    >
-     <option value="">Wybierz firmę</option>
-
-     {data.companies
-      .filter(c=>c.status!=='INACTIVE')
-      .map(c=>
-       <option key={c.id} value={c.id}>
-        {c.name}
-       </option>
-      )}
-    </select>
-
-    <input
-     placeholder="Albo wpisz nową firmę, jeśli nie ma jej na liście"
-     value={form.newCompanyName}
-     onChange={e=>setForm({
-      ...form,
-      newCompanyName:e.target.value,
-      companyId:e.target.value?'':form.companyId
-     })}
-    />
-
-    <input
-     placeholder="Numer zlecenia opcjonalnie"
-     value={form.orderNumber}
-     onChange={e=>setForm({...form,orderNumber:e.target.value})}
-    />
-
-    <select
-     value={form.type}
-     onChange={e=>setForm({...form,type:e.target.value})}
-    >
-     {workTypes.map(t=>
-      <option key={t}>{t}</option>
-     )}
-    </select>
-
-    <textarea
-     placeholder="Opis wykonanych prac"
-     value={form.description}
-     onChange={e=>setForm({...form,description:e.target.value})}
-    />
-
-    {!form.companyId&&form.newCompanyName&&
-     <input
-      type="number"
-      placeholder="Kwota za zlecenie — tylko dla firmy spoza listy"
-      value={form.netAmount||''}
-      onChange={e=>setForm({...form,netAmount:e.target.value})}
-     />
+     <div className="warnBox" style={{marginBottom:16}}>
+      Edytujesz istniejący wpis. Po wprowadzeniu zmian kliknij „Zapisz zmiany”.
+     </div>
     }
 
-    <input
-     placeholder="Czas pracy np. 2:30, 2h 30m, 150m"
-     value={form.time}
-     onChange={e=>setForm({...form,time:e.target.value})}
-    />
+    <div style={{display:'grid',gap:16}}>
+     <Field label="1. Data">
+      <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+     </Field>
 
-    <input
-     placeholder="Czas dojazdu np. 30m"
-     value={form.travelTime}
-     onChange={e=>setForm({...form,travelTime:e.target.value})}
-    />
+     {!editingWorkEntry&&<Field label="2. Wybór firmy lub kilku firm">
+      <div>
+       <input
+        placeholder="Szukaj firmy..."
+        value={workCompanySearch}
+        onChange={e=>setWorkCompanySearch(e.target.value)}
+       />
+       <div style={{border:'1px solid #d8e0e8',borderRadius:10,maxHeight:210,overflowY:'auto',padding:10,marginTop:8}}>
+        {data.companies
+         .filter(c=>c.status!=='INACTIVE')
+         .filter(c=>String(c.name||'').toLowerCase().includes(workCompanySearch.toLowerCase()))
+         .map(c=>{
+          const checked=(form.selectedCompanyIds||[]).includes(c.id);
+          return <label key={c.id} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 4px',cursor:'pointer'}}>
+           <input
+            type="checkbox"
+            checked={checked}
+            onChange={e=>setForm({...form,selectedCompanyIds:e.target.checked?[...(form.selectedCompanyIds||[]),c.id]:(form.selectedCompanyIds||[]).filter(id=>id!==c.id)})}
+            style={{width:'auto'}}
+           />
+           <span>{c.name}</span>
+          </label>
+         })}
+        {data.companies.filter(c=>c.status!=='INACTIVE').filter(c=>String(c.name||'').toLowerCase().includes(workCompanySearch.toLowerCase())).length===0&&
+         <div className="muted">Brak firm spełniających kryteria.</div>
+        }
+       </div>
+      </div>
+     </Field>}
 
-    <input
-     placeholder="Dodatkowy koszt np. 300"
-     value={form.additionalCost}
-     onChange={e=>setForm({...form,additionalCost:e.target.value})}
-    />
+     {editingWorkEntry&&<Field label="2. Firma">
+      <select value={form.companyId} onChange={e=>setForm({...form,companyId:e.target.value})}>
+       <option value="">Wybierz firmę</option>
+       {data.companies.filter(c=>c.status!=='INACTIVE').map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+     </Field>}
 
-    <input
-     placeholder="Opis kosztu np. ratownik medyczny"
-     value={form.additionalCostDescription}
-     onChange={e=>setForm({
-      ...form,
-      additionalCostDescription:e.target.value
-     })}
-    />
+     {!editingWorkEntry&&<Field label="3. Wpisz firmę ręcznie, jeżeli nie ma jej na liście">
+      <input
+       placeholder="Nazwa nowej firmy"
+       value={form.newCompanyName}
+       onChange={e=>setForm({...form,newCompanyName:e.target.value})}
+      />
+     </Field>}
 
-    {!editingWorkEntry&&
- <button
-  type="button"
-  className="orange"
-  onClick={addWork}
- >
-  Dodaj wpis
- </button>
-}
+     <Field label="4. Numer zlecenia / PO">
+      <input placeholder="opcjonalnie" value={form.orderNumber} onChange={e=>setForm({...form,orderNumber:e.target.value})}/>
+     </Field>
 
-{editingWorkEntry&&
- <div className="row" style={{marginTop:12}}>
-  <button
-   type="button"
-   className="orange"
-   onClick={saveEditedWorkEntry}
-  >
-   Zapisz zmiany
-  </button>
+     <Field label="5. Wybór czynności">
+      <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
+       <option value="szkolenie">Szkolenie</option>
+       <option value="audyt">Audyt</option>
+       <option value="konsultacje">Konsultacje</option>
+       <option value="inne">Inne</option>
+       <option value="własna czynność">Własna czynność</option>
+      </select>
+     </Field>
 
-  <button
-   type="button"
-   className="light"
-   onClick={cancelEditWorkEntry}
-  >
-   Anuluj edycję
-  </button>
- </div>
-}
+     {form.type==='własna czynność'&&<Field label="Nazwa własnej czynności">
+      <input placeholder="Wpisz nazwę czynności" value={form.customType||''} onChange={e=>setForm({...form,customType:e.target.value})}/>
+     </Field>}
+
+     <Field label="6. Krótki opis wykonywanych prac">
+      <textarea placeholder="Krótko opisz wykonane prace" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/>
+     </Field>
+
+     <Field label="7. Czas pracy">
+      <input placeholder="np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/>
+     </Field>
+
+     {!editingWorkEntry&&<div className="card" style={{margin:0,padding:18}}>
+      <h2 style={{marginTop:0}}>8. Typ rozliczenia</h2>
+      <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+        <input type="radio" name="billingMode" checked={form.billingMode==='MONTHLY'} onChange={()=>setForm({...form,billingMode:'MONTHLY',netAmount:'',additionalCost:'',extraCostName:'',additionalCostDescription:''})} style={{width:'auto'}}/>
+        Obsługa miesięczna
+       </label>
+       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+        <input type="radio" name="billingMode" checked={form.billingMode==='ONE_TIME'} onChange={()=>setForm({...form,billingMode:'ONE_TIME'})} style={{width:'auto'}}/>
+        Kwota netto za zlecenie
+       </label>
+      </div>
+     </div>}
+
+     {!editingWorkEntry&&form.billingMode==='ONE_TIME'&&<>
+      <Field label="9. Kwota netto za zlecenie">
+       <input type="number" min="0" step="0.01" placeholder="np. 1500" value={form.netAmount} onChange={e=>setForm({...form,netAmount:e.target.value})}/>
+      </Field>
+      <Field label="Kwota netto dodatkowego kosztu">
+       <input type="number" min="0" step="0.01" placeholder="np. 500" value={form.additionalCost} onChange={e=>setForm({...form,additionalCost:e.target.value})}/>
+      </Field>
+      <Field label="10. Nazwa dodatkowego kosztu">
+       <input placeholder="np. ratownik medyczny" value={form.extraCostName||''} onChange={e=>setForm({...form,extraCostName:e.target.value})}/>
+      </Field>
+      <Field label="11. Opis dodatkowych kosztów">
+       <input placeholder="np. ratownik, wynajęcie sali, materiały" value={form.additionalCostDescription} onChange={e=>setForm({...form,additionalCostDescription:e.target.value})}/>
+      </Field>
+     </>}
+
+     {!editingWorkEntry&&<button type="button" className="orange" onClick={addWork}>
+      Dodaj wpis
+     </button>}
+
+     {editingWorkEntry&&<div className="row" style={{marginTop:12}}>
+      <button type="button" className="orange" onClick={saveEditedWorkEntry}>Zapisz zmiany</button>
+      <button type="button" className="light" onClick={cancelEditWorkEntry}>Anuluj edycję</button>
+     </div>}
+    </div>
    </div>
 
    <div className="card" style={{maxWidth:1000,marginTop:20}}>
     <div className="row between">
-     <div>
-      <h2 style={{marginBottom:4}}>Moje wpisy z wybranego dnia</h2>
-
-      <div className="muted">
-       Data: {form.date}
-      </div>
-     </div>
-
-     <div style={{textAlign:'right'}}>
-      <b>Łączny czas</b>
-
-      <h2 style={{margin:0}}>
-       {minToText(myDayTotalMinutes)}
-      </h2>
-     </div>
+     <div><h2 style={{marginBottom:4}}>Moje wpisy z wybranego dnia</h2><div className="muted">Data: {form.date}</div></div>
+     <div style={{textAlign:'right'}}><b>Łączny czas</b><h2 style={{margin:0}}>{minToText(myDayTotalMinutes)}</h2></div>
     </div>
-
-    {myDayEntries.length===0&&
-     <p className="muted" style={{marginTop:20}}>
-      Nie masz jeszcze żadnych wpisów z tego dnia.
-     </p>
-    }
-
-    {myDayEntries.length>0&&
-     <div className="tableWrap" style={{marginTop:20}}>
-      <table>
-       <thead>
-        <tr>
-         <th>Firma</th>
-         <th>Rodzaj pracy</th>
-         <th>Opis</th>
-         <th>Czas pracy</th>
-         <th>Dojazd</th>
-         <th>Numer zlecenia</th>
-         <th>Akcje</th>
-        </tr>
-       </thead>
-
-       <tbody>
- {myDayEntries.map(entry=>
-  <tr key={entry.id}>
-   <td>{workEntryCompanyName(entry)}</td>
-
-   <td>{entry.type||'-'}</td>
-
-   <td
-    style={{
-     maxWidth:420,
-     whiteSpace:'normal',
-     wordBreak:'break-word'
-    }}
-   >
-    {entry.description||entry.title||'-'}
-   </td>
-
-   <td>{minToText(Number(entry.minutes||0))}</td>
-
-   <td>{minToText(Number(entry.travelMinutes||0))}</td>
-
-   <td>{entry.orderNumber||'-'}</td>
-
-   <td>
-    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-     <button
-      type="button"
-      className="light"
-      onClick={()=>startEditWorkEntry(entry)}
-     >
-      Edytuj
-     </button>
-
-     <button
-      type="button"
-      className="red"
-      onClick={()=>deleteWorkEntry(entry)}
-     >
-      Usuń
-     </button>
-    </div>
-   </td>
-  </tr>
- )}
-</tbody>
-      </table>
-     </div>
-    }
+    {myDayEntries.length===0&&<p className="muted" style={{marginTop:20}}>Nie masz jeszcze żadnych wpisów z tego dnia.</p>}
+    {myDayEntries.length>0&&<div className="tableWrap" style={{marginTop:20}}><table><thead><tr><th>Firma</th><th>Rodzaj pracy</th><th>Opis</th><th>Czas pracy</th><th>Dojazd</th><th>Numer zlecenia</th><th>Akcje</th></tr></thead><tbody>
+     {myDayEntries.map(entry=><tr key={entry.id}><td>{workEntryCompanyName(entry)}</td><td>{entry.type||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{minToText(Number(entry.minutes||0))}</td><td>{minToText(Number(entry.travelMinutes||0))}</td><td>{entry.orderNumber||'-'}</td><td><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="light" onClick={()=>startEditWorkEntry(entry)}>Edytuj</button><button type="button" className="red" onClick={()=>deleteWorkEntry(entry)}>Usuń</button></div></td></tr>)}
+    </tbody></table></div>}
    </div>
-
-   <ExtraOrdersPanel
-    data={data}
-    order={order}
-    setOrder={setOrder}
-    addExtraOrder={addExtraOrder}
-    deleteExtraOrder={deleteExtraOrder}
-    embedded={true}
-    showList={false}
-   />
   </div>
  }
  {tab==='extraOrders'&&<ExtraOrdersPanel data={data} order={order} setOrder={setOrder} addExtraOrder={addExtraOrder} deleteExtraOrder={deleteExtraOrder}/>} 
@@ -1271,135 +1231,7 @@ function InitialTrainingsPanel({data,training,setTraining,addInitialTraining,del
   onChange={e=>setTraining({...training,netAmount:e.target.value})}
 /></Field><Field label="Status"><select value={training.status} onChange={e=>setTraining({...training,status:e.target.value})}><option value="DONE">wykonane</option><option value="OPEN">otwarte</option><option value="INVOICED">zafakturowane</option><option value="PAID">opłacone</option></select></Field><Field label="Opis kosztów dodatkowych"><input placeholder="np. materiały, sala, dojazd, ratownik" value={training.extraCostDescription} onChange={e=>setTraining({...training,extraCostDescription:e.target.value})}/></Field></div><Field label="Opis szkolenia"><textarea placeholder="np. szkolenie wstępne BHP dla nowych pracowników" value={training.description} onChange={e=>setTraining({...training,description:e.target.value})}/></Field><p className="muted">Po dodaniu szkolenie zostanie podpięte pod wybraną firmę. Kwota szkolenia będzie przychodem firmy, a czas szkolenia doliczy się do godzin w podsumowaniu.</p><button className="orange">Dodaj szkolenie</button></form><div className="card"><h2>Lista szkoleń wstępnych</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firma</th><th>Czas</th><th>Wartość szkolenia</th><th>Opis kosztów</th><th>Status</th><th>Akcje</th></tr></thead><tbody>{trainings.map(o=><tr key={o.id}><td>{String(o.date).slice(0,10)}</td><td>{o.company?.name||'-'}</td><td>{minToText(Number(o.minutes||0))}</td><td>{money(o.netAmount)}</td><td>{o.extraCostDescription||'-'}</td><td>{o.status}</td><td><button className="light iconBtn" onClick={()=>deleteExtraOrder(o)}>🗑️</button></td></tr>)}</tbody></table></div></div></div>}
 
-function ExtraOrdersPanel({data,order,setOrder,addExtraOrder,deleteExtraOrder,embedded=false,showList=true}){
- const [companyFilter,setCompanyFilter]=useState('');
- const normalizedNewName=String(order.newCompanyName||'').trim().replace(/\s+/g,' ').toLowerCase();
- const duplicateCompany=(data.companies||[]).find(c=>String(c.name||'').trim().replace(/\s+/g,' ').toLowerCase()===normalizedNewName);
- const availableCompanies=(data.companies||[])
-  .filter(c=>c.status!=='INACTIVE')
-  .filter(c=>String(c.name||'').toLowerCase().includes(companyFilter.toLowerCase()))
-  .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'pl'));
- const selectedIds=Array.isArray(order.companyIds)?order.companyIds:[];
- const isOneTime=order.billingMode==='ONE_TIME';
- const orders=(data.extraOrders||[]).filter(o=>!['szkolenie wstępne','zlecenie sklep'].includes(String(o.type||'').toLowerCase()));
-
- function toggleCompany(id){
-  setOrder({...order,companyIds:selectedIds.includes(id)?selectedIds.filter(x=>x!==id):[...selectedIds,id]});
- }
-
- return <div className={embedded?"":"panel"} style={embedded?{marginTop:20}:{}}>
-  {!embedded&&<h1>Zlecenia dodatkowe</h1>}
-
-  <form className="card" onSubmit={addExtraOrder}>
-   <h2>{embedded?'Dodaj zlecenie dodatkowe':'Dodaj zlecenie'}</h2>
-
-   <div className="grid2">
-    <Field label="1. Data">
-     <input type="date" value={order.date} onChange={e=>setOrder({...order,date:e.target.value})}/>
-    </Field>
-
-    <Field label="4. Numer zlecenia / PO">
-     <input placeholder="opcjonalnie" value={order.orderNumber||''} onChange={e=>setOrder({...order,orderNumber:e.target.value})}/>
-    </Field>
-   </div>
-
-   <Field label="2. Wybór firmy lub kilku firm">
-    <input placeholder="Szukaj firmy..." value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)}/>
-   </Field>
-
-   <div style={{maxHeight:240,overflowY:'auto',border:'1px solid #d7e0e8',borderRadius:10,padding:12,marginBottom:14}}>
-    {availableCompanies.length===0&&<div className="muted">Brak firm spełniających kryteria.</div>}
-    {availableCompanies.map(c=><label key={c.id} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 4px',cursor:'pointer'}}>
-     <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={()=>toggleCompany(c.id)} style={{width:'auto'}}/>
-     <span>{c.name}</span>
-    </label>)}
-   </div>
-
-   {selectedIds.length>0&&<div className="muted" style={{marginBottom:14}}>Wybrano firm: {selectedIds.length}</div>}
-
-   <Field label="3. Wpisz firmę ręcznie, jeżeli nie ma jej na liście">
-    <input placeholder="Nazwa nowej firmy" value={order.newCompanyName||''} onChange={e=>setOrder({...order,newCompanyName:e.target.value})}/>
-   </Field>
-
-   {normalizedNewName&&duplicateCompany&&<div className="warnBox" style={{marginBottom:14}}>Firma już istnieje w bazie. Wybierz ją z listy.</div>}
-
-   <div className="grid2">
-    <Field label="5. Wybór czynności">
-     <select value={order.type} onChange={e=>setOrder({...order,type:e.target.value,customType:e.target.value==='własna czynność'?order.customType:''})}>
-      {orderTypes.map(t=><option key={t} value={t}>{t}</option>)}
-     </select>
-    </Field>
-
-    {order.type==='własna czynność'&&<Field label="Wpisz własną czynność">
-     <input placeholder="Nazwa czynności" value={order.customType||''} onChange={e=>setOrder({...order,customType:e.target.value})}/>
-    </Field>}
-
-    <Field label="7. Czas pracy">
-     <input placeholder="np. 2:30, 2h 30m, 150m" value={order.time||''} onChange={e=>setOrder({...order,time:e.target.value})}/>
-    </Field>
-   </div>
-
-   <Field label="6. Krótki opis wykonywanych prac">
-    <textarea placeholder="Krótko opisz wykonane prace" value={order.description||''} onChange={e=>setOrder({...order,description:e.target.value})}/>
-   </Field>
-
-   <div className="card" style={{marginTop:16}}>
-    <h3 style={{marginTop:0}}>8. Typ rozliczenia</h3>
-    <div style={{display:'flex',gap:18,flexWrap:'wrap'}}>
-     <label style={{display:'flex',alignItems:'center',gap:8}}>
-      <input type="radio" name="billingMode" value="MONTHLY" checked={order.billingMode==='MONTHLY'} onChange={()=>setOrder({...order,billingMode:'MONTHLY',netAmount:'',extraCostName:'',extraCost:'',extraCostDescription:''})} style={{width:'auto'}}/>
-      Obsługa miesięczna
-     </label>
-     <label style={{display:'flex',alignItems:'center',gap:8}}>
-      <input type="radio" name="billingMode" value="ONE_TIME" checked={order.billingMode==='ONE_TIME'} onChange={()=>setOrder({...order,billingMode:'ONE_TIME'})} style={{width:'auto'}}/>
-      Kwota netto za zlecenie
-     </label>
-    </div>
-   </div>
-
-   {isOneTime&&<div className="grid2" style={{marginTop:16}}>
-    <Field label="9. Kwota netto za zlecenie">
-     <input type="number" min="0.01" step="0.01" placeholder="np. 1500" value={order.netAmount||''} onChange={e=>setOrder({...order,netAmount:e.target.value})}/>
-    </Field>
-
-    <Field label="10. Nazwa dodatkowego kosztu">
-     <input placeholder="np. ratownik medyczny" value={order.extraCostName||''} onChange={e=>setOrder({...order,extraCostName:e.target.value})}/>
-    </Field>
-
-    <Field label="Kwota netto dodatkowego kosztu">
-     <input type="number" min="0" step="0.01" placeholder="np. 500" value={order.extraCost||''} onChange={e=>setOrder({...order,extraCost:e.target.value})}/>
-    </Field>
-
-    <Field label="11. Opis dodatkowych kosztów">
-     <input placeholder="np. ratownik, wynajęcie sali, materiały" value={order.extraCostDescription||''} onChange={e=>setOrder({...order,extraCostDescription:e.target.value})}/>
-    </Field>
-   </div>}
-
-   <button className="orange" disabled={!!duplicateCompany} style={{marginTop:16}}>Zapisz zlecenie</button>
-  </form>
-
-  {showList&&<div className="card">
-   <h2>Lista zleceń dodatkowych</h2>
-   <div className="tableWrap">
-    <table>
-     <thead><tr><th>Data</th><th>Firma</th><th>Czynność</th><th>Opis</th><th>Czas</th><th>Rozliczenie</th><th>Kwota</th><th>Dodatkowy koszt</th><th>Status</th><th>Akcje</th></tr></thead>
-     <tbody>{orders.map(o=><tr key={o.id}>
-      <td>{String(o.date).slice(0,10)}</td>
-      <td>{o.company?.name||'-'}</td>
-      <td>{o.type||o.title||'-'}</td>
-      <td>{o.description||'-'}</td>
-      <td>{minToText(Number(o.minutes||0))}</td>
-      <td>{o.billingMode==='ONE_TIME'?'Jednorazowe':'Obsługa miesięczna'}</td>
-      <td>{o.billingMode==='ONE_TIME'?money(o.netAmount):'-'}</td>
-      <td>{Number(o.extraCost||0)>0?`${o.extraCostName||'Koszt'}: ${money(o.extraCost)}`:'-'}</td>
-      <td>{o.status}</td>
-      <td><button className="light iconBtn" onClick={()=>deleteExtraOrder(o)}>🗑️</button></td>
-     </tr>)}</tbody>
-    </table>
-   </div>
-  </div>}
- </div>
-}
+function ExtraOrdersPanel({data,order,setOrder,addExtraOrder,deleteExtraOrder}){return <div className="panel"><h1>Zlecenia dodatkowe</h1><form className="card" onSubmit={addExtraOrder}><h2>Dodaj zlecenie poza miesięczną obsługą</h2><div className="grid2"><Field label="Data zlecenia"><input type="date" value={order.date} onChange={e=>setOrder({...order,date:e.target.value})}/></Field><Field label="Firma"><select value={order.companyId} onChange={e=>setOrder({...order,companyId:e.target.value,newCompanyName:e.target.value?'':order.newCompanyName})}><option value="">Wybierz firmę</option>{data.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Albo wpisz nową firmę"><input placeholder="Nazwa nowej firmy, jeśli nie ma jej na liście" value={order.newCompanyName||''} onChange={e=>setOrder({...order,newCompanyName:e.target.value,companyId:e.target.value?'':order.companyId})}/></Field><Field label="Nazwa zlecenia"><input placeholder="np. Szkolenie robotnicze" value={order.title} onChange={e=>setOrder({...order,title:e.target.value})}/></Field><Field label="Typ zlecenia"><select value={order.type} onChange={e=>setOrder({...order,type:e.target.value})}>{orderTypes.map(t=><option key={t}>{t}</option>)}</select></Field><Field label="Numer zlecenia / PO"><input placeholder="opcjonalnie" value={order.orderNumber} onChange={e=>setOrder({...order,orderNumber:e.target.value})}/></Field><Field label="Status"><select value={order.status} onChange={e=>setOrder({...order,status:e.target.value})}><option value="OPEN">otwarte</option><option value="DONE">wykonane</option><option value="INVOICED">zafakturowane</option><option value="PAID">opłacone</option></select></Field><Field label="Czas poświęcony na zlecenie"><input placeholder="np. 4:00, 2h 30m, 150m" value={order.time} onChange={e=>setOrder({...order,time:e.target.value})}/></Field><Field label="Kwota netto za zlecenie"><input type="number" placeholder="np. 1500" value={order.netAmount} onChange={e=>setOrder({...order,netAmount:e.target.value})}/></Field><Field label="Koszt dojazdów"><input type="number" placeholder="np. 200" value={order.travelCost} onChange={e=>setOrder({...order,travelCost:e.target.value})}/></Field><Field label="Dodatkowe koszty"><input type="number" placeholder="np. ratownik 500" value={order.extraCost} onChange={e=>setOrder({...order,extraCost:e.target.value})}/></Field><Field label="Opis dodatkowych kosztów"><input placeholder="np. ratownik medyczny, sala, materiały" value={order.extraCostDescription} onChange={e=>setOrder({...order,extraCostDescription:e.target.value})}/></Field></div><Field label="Opis zlecenia"><textarea placeholder="Opis wykonania / uwagi" value={order.description} onChange={e=>setOrder({...order,description:e.target.value})}/></Field><button className="orange">Dodaj zlecenie</button></form><div className="card"><h2>Lista zleceń dodatkowych</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firma</th><th>Nazwa</th><th>Typ</th><th>Czas</th><th>Kwota</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk</th><th>Status</th><th>Akcje</th></tr></thead><tbody>{(data.extraOrders||[]).filter(o=>!['szkolenie wstępne','zlecenie sklep'].includes(String(o.type||'').toLowerCase())).map(o=>{const costs=Number(o.travelCost||0)+Number(o.extraCost||0);const timeCost=(Number(o.minutes||0)/60)*250;const profit=Number(o.netAmount||0)-costs-timeCost;return <tr key={o.id}><td>{String(o.date).slice(0,10)}</td><td>{o.company?.name||'-'}</td><td>{o.title}</td><td>{o.type}</td><td>{minToText(Number(o.minutes||0))}</td><td>{money(o.netAmount)}</td><td>{money(costs)}</td><td>{money(timeCost)}</td><td>{money(profit)}</td><td>{o.status}</td><td><button className="light iconBtn" onClick={()=>deleteExtraOrder(o)}>🗑️</button></td></tr>})}</tbody></table></div></div></div>}
 
 function ShopOrdersPanel({data,shopOrder,setShopOrder,addShopOrder,deleteExtraOrder}){
  const shopOrders=(data.extraOrders||[]).filter(o=>String(o.type||'').toLowerCase()==='zlecenie sklep');
