@@ -113,11 +113,9 @@ model ExtraOrder {
   netAmount            Decimal  @default(0)
   travelCost           Decimal  @default(0)
   extraCost            Decimal  @default(0)
-  extraCostName        String?
   minutes              Int      @default(0)
   extraCostDescription String?
   orderNumber          String?
-  billingMode          String   @default("MONTHLY")
   status               String   @default("OPEN")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
