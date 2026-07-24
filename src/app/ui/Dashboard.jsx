@@ -475,6 +475,7 @@ async function deleteWorkEntry(entry){
  async function addQuickNote(){
  const content=String(quickNoteContent||'').trim();
  const newCompanyName=String(quickNoteNewCompanyName||'').trim();
+ const normalizedNewCompany=newCompanyName.toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim();
 
  if(!content){
   return alert('Wpisz treść notatki.');
@@ -531,11 +532,16 @@ async function deleteWorkEntry(entry){
  function moveQuickNoteToWork(note){
  setEditingWorkEntry(null);
 
+ const noteCompanyId=note.companyId||note.company?.id||'';
+
  setForm({
   date:new Date().toISOString().slice(0,10),
-  companyId:note.companyId||note.company?.id||'',
+  companyId:noteCompanyId,
+  selectedCompanyIds:noteCompanyId?[noteCompanyId]:[],
+  manualCompanyNames:[],
   newCompanyName:'',
   type:'inne',
+  customType:'',
   title:note.content||'',
   description:note.content||'',
   time:'',
@@ -691,7 +697,29 @@ async function deleteQuickNote(note){
   {tab==='work'&&
   <div className="panel">
    <div className="card" style={{maxWidth:900}}>
-    <h1>Panel pracownika</h1>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,marginBottom:8}}>
+     <h1 style={{margin:0}}>Panel pracownika</h1>
+     <button
+      type="button"
+      onClick={()=>setQuickNotesOpen(true)}
+      aria-label="Otwórz szybkie notatki"
+      title="Szybkie notatki"
+      style={{
+       width:58,
+       height:58,
+       flex:'0 0 auto',
+       borderRadius:'50%',
+       border:'none',
+       background:'#ff5a14',
+       color:'#fff',
+       fontSize:25,
+       cursor:'pointer',
+       boxShadow:'0 8px 24px rgba(0,0,0,0.20)'
+      }}
+     >
+      📝
+     </button>
+    </div>
 
     {editingWorkEntry&&
      <div className="warnBox" style={{marginBottom:16}}>
@@ -1054,27 +1082,6 @@ async function deleteQuickNote(note){
  {tab==='pwa'&&<div className="panel"><h1>Aplikacja mobilna PWA</h1><p><b>Android:</b> Chrome → trzy kropki → Dodaj do ekranu głównego.</p><p><b>iPhone:</b> Safari → Udostępnij → Do ekranu początkowego.</p></div>}
  </div>
 
- <button
-  type="button"
-  onClick={()=>setQuickNotesOpen(true)}
-  style={{
-   position:'fixed',
-   right:20,
-   bottom:20,
-   zIndex:999,
-   width:58,
-   height:58,
-   borderRadius:'50%',
-   border:'none',
-   background:'#ff5a14',
-   color:'#fff',
-   fontSize:25,
-   cursor:'pointer',
-   boxShadow:'0 8px 24px rgba(0,0,0,0.25)'
-  }}
- >
-  📝
- </button>
 
  {quickNotesOpen&&
   <div
