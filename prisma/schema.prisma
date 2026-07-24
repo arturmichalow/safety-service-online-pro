@@ -33,6 +33,7 @@ model User {
   active            Boolean     @default(true)
   permissions       Json?
   workEntries       WorkEntry[]
+  quickNotes        QuickNote[]
   auditLogs         AuditLog[]
   assignedCompanies Company[]
   createdAt         DateTime    @default(now())
@@ -58,6 +59,7 @@ model Company {
   assignedUser         User?         @relation(fields: [assignedUserId], references: [id])
   workEntries          WorkEntry[]
   extraOrders          ExtraOrder[]
+  quickNotes           QuickNote[]
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 }
@@ -81,6 +83,25 @@ model WorkEntry {
   createdAt                 DateTime @default(now())
 }
 
+model QuickNote {
+  id          String   @id @default(cuid())
+  content     String
+  status      String   @default("OPEN")
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  workEntryId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([status])
+}
 model ExtraOrder {
   id                   String   @id @default(cuid())
   companyId            String
