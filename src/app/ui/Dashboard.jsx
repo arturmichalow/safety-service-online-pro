@@ -63,7 +63,28 @@ function inSelectedMonth(date){
  },[data.workEntries,user.id,form.date]);
 
  const myDayTotalMinutes=useMemo(()=>{
+  // Wpis grupowy tworzy osobny rekord dla każdej firmy, ale czas pracy
+  // powinien zostać policzony tylko raz. Rekordy utworzone razem mają
+  // te same dane i bardzo zbliżony czas utworzenia.
+  const countedGroups=new Set();
+
   return myDayEntries.reduce((sum,entry)=>{
+   const createdAt=new Date(entry.createdAt||entry.date).getTime();
+   const createdBatch=Number.isFinite(createdAt)?Math.floor(createdAt/60000):0;
+   const groupKey=[
+    entry.userId||'',
+    String(entry.date||'').slice(0,10),
+    entry.type||'',
+    entry.title||'',
+    entry.description||'',
+    Number(entry.minutes||0),
+    Number(entry.travelMinutes||0),
+    entry.orderNumber||'',
+    createdBatch
+   ].join('|');
+
+   if(countedGroups.has(groupKey))return sum;
+   countedGroups.add(groupKey);
    return sum+Number(entry.minutes||0);
   },0);
  },[myDayEntries]);
@@ -628,6 +649,24 @@ async function deleteQuickNote(note){
         value={workCompanySearch}
         onChange={e=>setWorkCompanySearch(e.target.value)}
        />
+       {(form.selectedCompanyIds||[]).length>0&&
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10,marginBottom:8}}>
+         {(form.selectedCompanyIds||[]).map(companyId=>{
+          const selectedCompany=data.companies.find(c=>c.id===companyId);
+          if(!selectedCompany)return null;
+
+          return <span key={companyId} style={{display:'inline-flex',alignItems:'center',gap:8,padding:'7px 10px',border:'1px solid #cbd8e5',borderRadius:999,background:'#f5f8fb',fontWeight:700}}>
+           {selectedCompany.name}
+           <button
+            type="button"
+            aria-label={`Usuń firmę ${selectedCompany.name}`}
+            onClick={()=>setForm({...form,selectedCompanyIds:(form.selectedCompanyIds||[]).filter(id=>id!==companyId)})}
+            style={{border:0,background:'transparent',padding:0,cursor:'pointer',fontSize:16,lineHeight:1}}
+           >×</button>
+          </span>
+         })}
+        </div>
+       }
        <div style={{border:'1px solid #d8e0e8',borderRadius:10,maxHeight:210,overflowY:'auto',padding:10,marginTop:8}}>
         {data.companies
          .filter(c=>c.status!=='INACTIVE')
