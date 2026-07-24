@@ -7,6 +7,13 @@ const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','
 const workTypes=['dokumentacja','audyt','szkolenie','dojazd','email','telefon','inne'];
 const orderTypes=['szkolenie','audyt','ratownik','pomiary oświetlenia','dokumentacja','konsultacje','wypadek','inne'];
 function minToText(m){const h=Math.floor((m||0)/60),mm=(m||0)%60;return `${h}h ${mm}m`}
+function minutesToInput(minutes){
+ const total=Number(minutes||0);
+ const h=Math.floor(total/60);
+ const m=total%60;
+
+ return `${h}:${String(m).padStart(2,'0')}`;
+}
 function money(v){return `${Number(v||0).toLocaleString('pl-PL')} zł`}
 function parseTime(s){s=String(s||'').toLowerCase().replace(',','.').trim();if(!s)return 0;if(s.includes(':')){const [h,m]=s.split(':');return Number(h)*60+Number(m||0)}const h=s.match(/(\d+(\.\d+)?)\s*h/),m=s.match(/(\d+)\s*m/);if(h||m)return Math.round(Number(h?.[1]||0)*60+Number(m?.[1]||0));return Math.round(Number(s||0)*60)}
 function getShopMargin(o){const m=String(o.description||'').match(/\[MARZA_SKLEP:([^\]]+)\]/);return m?Number(String(m[1]).replace(',','.').replace(/[^0-9.-]/g,'')):Number(o.netAmount||0)}
@@ -38,6 +45,7 @@ function inSelectedMonth(date){
  const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',type:'inne',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:'',status:'OPEN'});
  const [shopOrder,setShopOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',margin:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',status:'OPEN'});
  const [training,setTraining]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',time:'1:00',unitAmount:'109',peopleCount:'1',netAmount:'109',extraCostDescription:'',description:'',status:'DONE'});
+ const [editingWorkEntry,setEditingWorkEntry]=useState(null);
   const myDayEntries=useMemo(()=>{
   return (data.workEntries||[])
    .filter(entry=>{
@@ -178,6 +186,130 @@ return {
   setForm({...form,companyId:'',newCompanyName:'',description:'',time:'',travelTime:'',additionalCost:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
   await load();alert('Dodano wpis pracy.');
  }catch(err){alert(err.message)}}
+ function startEditWorkEntry(entry){
+ setEditingWorkEntry(entry);
+
+ setForm({
+  date:String(entry.date||'').slice(0,10),
+  companyId:entry.companyId||'',
+  newCompanyName:'',
+  type:entry.type||'inne',
+  title:entry.title||'',
+  description:entry.description||'',
+  time:minutesToInput(entry.minutes),
+  travelTime:minutesToInput(entry.travelMinutes),
+  additionalCost:String(entry.additionalCost||''),
+  additionalCostDescription:entry.additionalCostDescription||'',
+  orderNumber:entry.orderNumber||'',
+  netAmount:''
+ });
+
+ window.scrollTo({
+  top:0,
+  behavior:'smooth'
+ });
+}
+
+function cancelEditWorkEntry(){
+ setEditingWorkEntry(null);
+
+ setForm({
+  date:new Date().toISOString().slice(0,10),
+  companyId:'',
+  newCompanyName:'',
+  type:'dokumentacja',
+  title:'',
+  description:'',
+  time:'',
+  travelTime:'',
+  additionalCost:'',
+  additionalCostDescription:'',
+  orderNumber:'',
+  netAmount:''
+ });
+}
+
+async function saveEditedWorkEntry(){
+ if(!editingWorkEntry)return;
+
+ try{
+  if(!form.companyId){
+   return alert('Wybierz firmę.');
+  }
+
+  if(!form.time){
+   return alert('Wpisz czas pracy.');
+  }
+
+  await jsonFetch('/api/work/'+editingWorkEntry.id,{
+   method:'PUT',
+   headers:{
+    'Content-Type':'application/json'
+   },
+   body:JSON.stringify({
+    date:form.date,
+    companyId:form.companyId,
+    orderNumber:form.orderNumber||null,
+    type:form.type||'inne',
+    title:form.description?.trim()||form.type||'Wpis pracy',
+    description:form.description||null,
+    minutes:parseTime(form.time),
+    travelMinutes:parseTime(form.travelTime),
+    additionalCost:Number(form.additionalCost||0),
+    additionalCostDescription:form.additionalCostDescription||null
+   })
+  });
+
+  setEditingWorkEntry(null);
+
+  setForm({
+   date:form.date,
+   companyId:'',
+   newCompanyName:'',
+   type:'dokumentacja',
+   title:'',
+   description:'',
+   time:'',
+   travelTime:'',
+   additionalCost:'',
+   additionalCostDescription:'',
+   orderNumber:'',
+   netAmount:''
+  });
+
+  await load();
+
+  alert('Wpis został zaktualizowany.');
+ }catch(err){
+  alert(err.message);
+ }
+}
+
+async function deleteWorkEntry(entry){
+ if(!entry)return;
+
+ const companyName=workEntryCompanyName(entry);
+
+ if(!confirm(`Czy na pewno usunąć wpis dla firmy: ${companyName}?`)){
+  return;
+ }
+
+ try{
+  await jsonFetch('/api/work/'+entry.id,{
+   method:'DELETE'
+  });
+
+  if(editingWorkEntry?.id===entry.id){
+   cancelEditWorkEntry();
+  }
+
+  await load();
+
+  alert('Wpis został usunięty.');
+ }catch(err){
+  alert(err.message);
+ }
+}
  async function addExtraOrder(e){
  e.preventDefault();
  try{
@@ -297,6 +429,14 @@ return {
 
    <div className="card" style={{maxWidth:760}}>
     <h1>Panel pracownika</h1>
+    {editingWorkEntry&&
+ <div
+  className="warnBox"
+  style={{marginBottom:16}}
+ >
+  Edytujesz istniejący wpis. Po wprowadzeniu zmian kliknij „Zapisz zmiany”.
+ </div>
+}
 
     <input
      type="date"
@@ -391,13 +531,35 @@ return {
      })}
     />
 
-    <button
-     type="button"
-     className="orange"
-     onClick={addWork}
-    >
-     Dodaj wpis
-    </button>
+    {!editingWorkEntry&&
+ <button
+  type="button"
+  className="orange"
+  onClick={addWork}
+ >
+  Dodaj wpis
+ </button>
+}
+
+{editingWorkEntry&&
+ <div className="row" style={{marginTop:12}}>
+  <button
+   type="button"
+   className="orange"
+   onClick={saveEditedWorkEntry}
+  >
+   Zapisz zmiany
+  </button>
+
+  <button
+   type="button"
+   className="light"
+   onClick={cancelEditWorkEntry}
+  >
+   Anuluj edycję
+  </button>
+ </div>
+}
    </div>
 
    <div className="card" style={{maxWidth:1000,marginTop:20}}>
@@ -441,37 +603,50 @@ return {
        </thead>
 
        <tbody>
-        {myDayEntries.map(entry=>
-         <tr key={entry.id}>
-          <td>{workEntryCompanyName(entry)}</td>
-          <td>{entry.type||'-'}</td>
-          <td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>
- {entry.description||entry.title||'-'}
-</td>
-          <td>{minToText(Number(entry.minutes||0))}</td>
-          <td>{minToText(Number(entry.travelMinutes||0))}</td>
-          <td>{entry.orderNumber||'-'}</td>
-          <td>
- <div style={{display:'flex',gap:8}}>
-  <button
-   type="button"
-   onClick={()=>startEditWorkEntry(entry)}
-  >
-   Edytuj
-  </button>
+ {myDayEntries.map(entry=>
+  <tr key={entry.id}>
+   <td>{workEntryCompanyName(entry)}</td>
 
-  <button
-   type="button"
-   className="danger"
-   onClick={()=>deleteWorkEntry(entry)}
-  >
-   Usuń
-  </button>
- </div>
-</td>
-         </tr>
-        )}
-       </tbody>
+   <td>{entry.type||'-'}</td>
+
+   <td
+    style={{
+     maxWidth:420,
+     whiteSpace:'normal',
+     wordBreak:'break-word'
+    }}
+   >
+    {entry.description||entry.title||'-'}
+   </td>
+
+   <td>{minToText(Number(entry.minutes||0))}</td>
+
+   <td>{minToText(Number(entry.travelMinutes||0))}</td>
+
+   <td>{entry.orderNumber||'-'}</td>
+
+   <td>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+     <button
+      type="button"
+      className="light"
+      onClick={()=>startEditWorkEntry(entry)}
+     >
+      Edytuj
+     </button>
+
+     <button
+      type="button"
+      className="red"
+      onClick={()=>deleteWorkEntry(entry)}
+     >
+      Usuń
+     </button>
+    </div>
+   </td>
+  </tr>
+ )}
+</tbody>
       </table>
      </div>
     }
