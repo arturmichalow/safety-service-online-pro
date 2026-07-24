@@ -1,93 +1,133 @@
 import { prisma } from '../../../../lib/prisma';
 import { currentUser } from '../../../../lib/auth';
 
-function data(b) {
+async function getAuthorizedEntry(id,user){
+ const entry=await prisma.workEntry.findUnique({
+  where:{
+   id
+  }
+ });
+
+ if(!entry){
   return {
-    date: b.date ? new Date(b.date) : undefined,
-    companyId: b.companyId,
-    orderNumber: b.orderNumber || null,
-    type: b.type || 'inne',
-    title: b.title || b.type || 'Wpis pracy',
-    description: b.description || null,
-    minutes: Number(b.minutes || 0),
-    travelMinutes: Number(b.travelMinutes || 0),
-    additionalCost: Number(b.additionalCost || 0),
-    additionalCostDescription: b.additionalCostDescription || null
+   error:Response.json(
+    {error:'Nie znaleziono wpisu.'},
+    {status:404}
+   )
   };
+ }
+
+ const isOwner=entry.userId===user.id;
+ const isAdmin=user.role==='ADMIN';
+
+ if(!isOwner&&!isAdmin){
+  return {
+   error:Response.json(
+    {error:'Nie masz uprawnień do tego wpisu.'},
+    {status:403}
+   )
+  };
+ }
+
+ return {
+  entry
+ };
 }
 
-export async function PUT(req, { params }) {
-  const user = await currentUser();
+export async function PUT(req,{params}){
+ const user=await currentUser();
 
-  if (!user || !['ADMIN', 'WORKER'].includes(user.role)) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+ if(!user){
+  return Response.json(
+   {error:'Unauthorized'},
+   {status:401}
+  );
+ }
+
+ const authorization=await getAuthorizedEntry(params.id,user);
+
+ if(authorization.error){
+  return authorization.error;
+ }
+
+ const before=authorization.entry;
+ const body=await req.json();
+
+ if(!body.companyId){
+  return Response.json(
+   {error:'Wybierz firmę.'},
+   {status:400}
+  );
+ }
+
+ const updated=await prisma.workEntry.update({
+  where:{
+   id:params.id
+  },
+  data:{
+   date:new Date(body.date),
+   companyId:body.companyId,
+   orderNumber:body.orderNumber||null,
+   type:body.type||'inne',
+   title:body.title||body.type||'Wpis pracy',
+   description:body.description||null,
+   minutes:Number(body.minutes||0),
+   travelMinutes:Number(body.travelMinutes||0),
+   additionalCost:Number(body.additionalCost||0),
+   additionalCostDescription:
+    body.additionalCostDescription||null
   }
+ });
 
-  const body = await req.json();
-
-  const existing = await prisma.workEntry.findUnique({
-    where: { id: params.id }
-  });
-
-  if (!existing) {
-    return Response.json({ error: 'Nie znaleziono wpisu.' }, { status: 404 });
+ await prisma.auditLog.create({
+  data:{
+   userId:user.id,
+   action:'UPDATE',
+   entity:'WorkEntry',
+   entityId:updated.id,
+   before,
+   after:updated
   }
+ });
 
-  if (user.role !== 'ADMIN' && existing.userId !== user.id) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  const entry = await prisma.workEntry.update({
-    where: { id: params.id },
-    data: data(body),
-    include: { company: true, user: true }
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      userId: user.id,
-      action: 'UPDATE',
-      entity: 'WorkEntry',
-      entityId: entry.id,
-      after: entry
-    }
-  });
-
-  return Response.json(entry);
+ return Response.json(updated);
 }
 
-export async function DELETE(req, { params }) {
-  const user = await currentUser();
+export async function DELETE(req,{params}){
+ const user=await currentUser();
 
-  if (!user || !['ADMIN', 'WORKER'].includes(user.role)) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+ if(!user){
+  return Response.json(
+   {error:'Unauthorized'},
+   {status:401}
+  );
+ }
+
+ const authorization=await getAuthorizedEntry(params.id,user);
+
+ if(authorization.error){
+  return authorization.error;
+ }
+
+ const before=authorization.entry;
+
+ await prisma.workEntry.delete({
+  where:{
+   id:params.id
   }
+ });
 
-  const existing = await prisma.workEntry.findUnique({
-    where: { id: params.id }
-  });
-
-  if (!existing) {
-    return Response.json({ error: 'Nie znaleziono wpisu.' }, { status: 404 });
+ await prisma.auditLog.create({
+  data:{
+   userId:user.id,
+   action:'DELETE',
+   entity:'WorkEntry',
+   entityId:before.id,
+   before
   }
+ });
 
-  if (user.role !== 'ADMIN' && existing.userId !== user.id) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  await prisma.workEntry.delete({
-    where: { id: params.id }
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      userId: user.id,
-      action: 'DELETE',
-      entity: 'WorkEntry',
-      entityId: params.id,
-      before: existing
-    }
-  });
-
-  return Response.json({ ok: true });
+ return Response.json({
+  success:true
+ });
 }
