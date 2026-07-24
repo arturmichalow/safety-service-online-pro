@@ -16,6 +16,21 @@ function minutesToInput(minutes){
 }
 function money(v){return `${Number(v||0).toLocaleString('pl-PL')} zł`}
 function parseTime(s){s=String(s||'').toLowerCase().replace(',','.').trim();if(!s)return 0;if(s.includes(':')){const [h,m]=s.split(':');return Number(h)*60+Number(m||0)}const h=s.match(/(\d+(\.\d+)?)\s*h/),m=s.match(/(\d+)\s*m/);if(h||m)return Math.round(Number(h?.[1]||0)*60+Number(m?.[1]||0));return Math.round(Number(s||0)*60)}
+function splitMinutesBetweenCompanies(totalMinutes, companyCount) {
+  const total = Number(totalMinutes || 0);
+  const count = Number(companyCount || 0);
+
+  if (total <= 0 || count <= 0) {
+    return [];
+  }
+
+  const minutesPerCompany = Math.floor(total / count);
+  const remainingMinutes = total % count;
+
+  return Array.from({ length: count }, (_, index) => {
+    return minutesPerCompany + (index < remainingMinutes ? 1 : 0);
+  });
+}
 function getShopMargin(o){const m=String(o.description||'').match(/\[MARZA_SKLEP:([^\]]+)\]/);return m?Number(String(m[1]).replace(',','.').replace(/[^0-9.-]/g,'')):Number(o.netAmount||0)}
 function cleanShopDescription(o){return String(o.description||'').replace(/\s*\[MARZA_SKLEP:[^\]]+\]\s*/,'').trim()}
 function has(user,key){return user.role==='ADMIN'||user.permissions?.[key]}
@@ -67,30 +82,9 @@ function inSelectedMonth(date){
  },[data.workEntries,user.id,form.date]);
 
  const myDayTotalMinutes=useMemo(()=>{
-  // Wpis grupowy tworzy osobny rekord dla każdej firmy, ale czas pracy
-  // powinien zostać policzony tylko raz. Rekordy utworzone razem mają
-  // te same dane i bardzo zbliżony czas utworzenia.
-  const countedGroups=new Set();
-
-  return myDayEntries.reduce((sum,entry)=>{
-   const createdAt=new Date(entry.createdAt||entry.date).getTime();
-   const createdBatch=Number.isFinite(createdAt)?Math.floor(createdAt/60000):0;
-   const groupKey=[
-    entry.userId||'',
-    String(entry.date||'').slice(0,10),
-    entry.type||'',
-    entry.title||'',
-    entry.description||'',
-    Number(entry.minutes||0),
-    Number(entry.travelMinutes||0),
-    entry.orderNumber||'',
-    createdBatch
-   ].join('|');
-
-   if(countedGroups.has(groupKey))return sum;
-   countedGroups.add(groupKey);
-   return sum+Number(entry.minutes||0);
-  },0);
+  // Czas wpisu grupowego jest już dzielony pomiędzy firmy podczas zapisu,
+  // dlatego tutaj sumujemy wszystkie rekordy bez dodatkowego grupowania.
+  return myDayEntries.reduce((sum,entry)=>sum+Number(entry.minutes||0),0);
  },[myDayEntries]);
 
  function workEntryCompanyName(entry){
@@ -272,8 +266,10 @@ return {
    companyIds.push(created.id);
   }
 
+  const dividedMinutes=splitMinutesBetweenCompanies(minutes,companyIds.length);
+
   if(form.billingMode==='MONTHLY'){
-   await Promise.all(companyIds.map(companyId=>jsonFetch('/api/work',{
+   await Promise.all(companyIds.map((companyId,index)=>jsonFetch('/api/work',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -283,7 +279,7 @@ return {
      type:resolvedType,
      title:description,
      description,
-     minutes,
+     minutes:dividedMinutes[index],
      travelMinutes:parseTime(form.travelTime),
      additionalCost:0,
      additionalCostDescription:null
@@ -295,7 +291,7 @@ return {
     String(form.additionalCostDescription||'').trim()
    ].filter(Boolean).join(' — ')||null;
 
-   await Promise.all(companyIds.map(companyId=>jsonFetch('/api/extra-orders',{
+   await Promise.all(companyIds.map((companyId,index)=>jsonFetch('/api/extra-orders',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -308,7 +304,7 @@ return {
      travelCost:0,
      extraCost,
      extraCostDescription:costDescription,
-     minutes,
+     minutes:dividedMinutes[index],
      orderNumber:form.orderNumber||null,
      status:'DONE'
     })
