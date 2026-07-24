@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import jsPDF from 'jspdf';
 
@@ -53,6 +53,9 @@ function inSelectedMonth(date){
  const [quickNoteCompanyId,setQuickNoteCompanyId]=useState('');
  const [quickNoteNewCompanyName,setQuickNoteNewCompanyName]=useState('');
  const [quickNotesLoading,setQuickNotesLoading]=useState(false);
+ const [quickNoteListening,setQuickNoteListening]=useState(false);
+ const quickNoteRecognitionRef=useRef(null);
+ const quickNoteSpeechBaseRef=useRef('');
  const myDayEntries=useMemo(()=>{
   return (data.workEntries||[])
    .filter(entry=>{
@@ -472,6 +475,69 @@ async function deleteWorkEntry(entry){
   alert(err.message);
  }
 }
+ function toggleQuickNoteVoice(){
+  if(quickNoteListening){
+   quickNoteRecognitionRef.current?.stop();
+   return;
+  }
+
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+
+  if(!SpeechRecognition){
+   alert('Ta przeglądarka nie obsługuje rozpoznawania mowy. Spróbuj użyć Chrome albo Safari z włączonym dostępem do mikrofonu.');
+   return;
+  }
+
+  const recognition=new SpeechRecognition();
+  recognition.lang='pl-PL';
+  recognition.continuous=true;
+  recognition.interimResults=true;
+  recognition.maxAlternatives=1;
+
+  quickNoteSpeechBaseRef.current=String(quickNoteContent||'').trim();
+  quickNoteRecognitionRef.current=recognition;
+
+  recognition.onstart=()=>setQuickNoteListening(true);
+
+  recognition.onresult=event=>{
+   let finalText='';
+   let interimText='';
+
+   for(let i=0;i<event.results.length;i++){
+    const transcript=event.results[i][0]?.transcript||'';
+    if(event.results[i].isFinal)finalText+=transcript+' ';
+    else interimText+=transcript;
+   }
+
+   const base=quickNoteSpeechBaseRef.current;
+   const spoken=(finalText+interimText).trim();
+   setQuickNoteContent([base,spoken].filter(Boolean).join(base&&spoken?' ':'').trim());
+  };
+
+  recognition.onerror=event=>{
+   console.error('Błąd rozpoznawania mowy:',event.error);
+   setQuickNoteListening(false);
+
+   if(event.error==='not-allowed'||event.error==='service-not-allowed'){
+    alert('Brak dostępu do mikrofonu. Zezwól aplikacji na używanie mikrofonu w ustawieniach przeglądarki.');
+   }else if(event.error!=='aborted'&&event.error!=='no-speech'){
+    alert('Nie udało się rozpoznać mowy. Spróbuj ponownie.');
+   }
+  };
+
+  recognition.onend=()=>{
+   setQuickNoteListening(false);
+   quickNoteRecognitionRef.current=null;
+  };
+
+  try{
+   recognition.start();
+  }catch(err){
+   console.error(err);
+   setQuickNoteListening(false);
+  }
+ }
+
  async function addQuickNote(){
  const content=String(quickNoteContent||'').trim();
  const newCompanyName=String(quickNoteNewCompanyName||'').trim();
@@ -1117,6 +1183,22 @@ async function deleteQuickNote(note){
      onChange={e=>setQuickNoteContent(e.target.value)}
      style={{minHeight:120}}
     />
+
+    <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,marginBottom:8}}>
+     <button
+      type="button"
+      className={quickNoteListening?'red':'light'}
+      onClick={toggleQuickNoteVoice}
+     >
+      {quickNoteListening?'⏹ Zatrzymaj nagrywanie':'🎤 Nagraj notatkę'}
+     </button>
+
+     {quickNoteListening&&
+      <span style={{fontWeight:700,color:'#d23b3b'}}>
+       Słucham…
+      </span>
+     }
+    </div>
 
     <label style={{display:'block',fontWeight:700,marginTop:8,marginBottom:5}}>Firma z listy (opcjonalnie)</label>
     <select
