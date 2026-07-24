@@ -436,6 +436,7 @@ return {
          <th>Czas pracy</th>
          <th>Dojazd</th>
          <th>Numer zlecenia</th>
+         <th>Akcje</th>
         </tr>
        </thead>
 
@@ -444,10 +445,30 @@ return {
          <tr key={entry.id}>
           <td>{workEntryCompanyName(entry)}</td>
           <td>{entry.type||'-'}</td>
-          <td>{entry.description||entry.title||'-'}</td>
+          <td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>
+ {entry.description||entry.title||'-'}
+</td>
           <td>{minToText(Number(entry.minutes||0))}</td>
           <td>{minToText(Number(entry.travelMinutes||0))}</td>
           <td>{entry.orderNumber||'-'}</td>
+          <td>
+ <div style={{display:'flex',gap:8}}>
+  <button
+   type="button"
+   onClick={()=>startEditWorkEntry(entry)}
+  >
+   Edytuj
+  </button>
+
+  <button
+   type="button"
+   className="danger"
+   onClick={()=>deleteWorkEntry(entry)}
+  >
+   Usuń
+  </button>
+ </div>
+</td>
          </tr>
         )}
        </tbody>
