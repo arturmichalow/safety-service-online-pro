@@ -360,6 +360,50 @@ async function deleteWorkEntry(entry){
   alert(err.message);
  }
 }
+ function moveQuickNoteToWork(note){
+ setEditingWorkEntry(null);
+
+ setForm({
+  date:new Date().toISOString().slice(0,10),
+  companyId:note.companyId||note.company?.id||'',
+  newCompanyName:'',
+  type:'inne',
+  title:note.content||'',
+  description:note.content||'',
+  time:'',
+  travelTime:'',
+  additionalCost:'',
+  additionalCostDescription:'',
+  orderNumber:'',
+  netAmount:''
+ });
+
+ setTab('work');
+ setQuickNotesOpen(false);
+
+ window.scrollTo({
+  top:0,
+  behavior:'smooth'
+ });
+}
+
+async function deleteQuickNote(note){
+ if(!note)return;
+
+ if(!confirm('Czy na pewno usunąć tę notatkę?')){
+  return;
+ }
+
+ try{
+  await jsonFetch('/api/quick-notes/'+note.id,{
+   method:'DELETE'
+  });
+
+  await loadQuickNotes();
+ }catch(err){
+  alert(err.message);
+ }
+}
  async function addExtraOrder(e){
  e.preventDefault();
  try{
@@ -1005,6 +1049,30 @@ async function deleteWorkEntry(entry){
       <div className="muted">
        {new Date(note.createdAt).toLocaleString('pl-PL')}
       </div>
+      <div
+ style={{
+  display:'flex',
+  gap:'8px',
+  flexWrap:'wrap',
+  marginTop:'12px'
+ }}
+>
+ <button
+  type="button"
+  className="orange"
+  onClick={()=>moveQuickNoteToWork(note)}
+ >
+  Przenieś do wpisu
+ </button>
+
+ <button
+  type="button"
+  className="red"
+  onClick={()=>deleteQuickNote(note)}
+ >
+  Usuń
+ </button>
+</div>
      </div>
     )}
    </div>
