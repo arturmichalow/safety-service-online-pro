@@ -1,50 +1,20 @@
 import { prisma } from '../../../../lib/prisma';
 import { currentUser } from '../../../../lib/auth';
 
-function orderData(body) {
+function data(body) {
   return {
-    ...(body.companyId !== undefined ? { companyId: body.companyId } : {}),
-    ...(body.date !== undefined ? { date: new Date(body.date) } : {}),
-    ...(body.title !== undefined
-      ? { title: String(body.title || '').trim() }
-      : {}),
-    ...(body.type !== undefined
-      ? { type: String(body.type || 'inne').trim() }
-      : {}),
-    ...(body.description !== undefined
-      ? {
-          description: body.description
-            ? String(body.description).trim()
-            : null
-        }
-      : {}),
-    ...(body.netAmount !== undefined
-      ? { netAmount: Number(body.netAmount || 0) }
-      : {}),
-    ...(body.travelCost !== undefined
-      ? { travelCost: Number(body.travelCost || 0) }
-      : {}),
-    ...(body.extraCost !== undefined
-      ? { extraCost: Number(body.extraCost || 0) }
-      : {}),
-    ...(body.minutes !== undefined
-      ? { minutes: Number(body.minutes || 0) }
-      : {}),
-    ...(body.extraCostDescription !== undefined
-      ? {
-          extraCostDescription: body.extraCostDescription
-            ? String(body.extraCostDescription).trim()
-            : null
-        }
-      : {}),
-    ...(body.orderNumber !== undefined
-      ? {
-          orderNumber: body.orderNumber
-            ? String(body.orderNumber).trim()
-            : null
-        }
-      : {}),
-    ...(body.status !== undefined ? { status: body.status } : {})
+    companyId: body.companyId,
+    date: body.date ? new Date(body.date) : undefined,
+    title: body.title,
+    type: body.type || 'inne',
+    description: body.description || null,
+    netAmount: Number(body.netAmount || 0),
+    travelCost: Number(body.travelCost || 0),
+    extraCost: Number(body.extraCost || 0),
+    extraCostDescription: body.extraCostDescription || null,
+    orderNumber: body.orderNumber || null,
+    status: body.status || 'OPEN',
+    ...(body.minutes !== undefined ? { minutes: Number(body.minutes || 0) } : {})
   };
 }
 
@@ -52,25 +22,24 @@ export async function PUT(req, { params }) {
   try {
     const user = await currentUser();
 
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !['ADMIN', 'WORKER'].includes(user.role)) {
       return Response.json({ error: 'Brak uprawnień.' }, { status: 403 });
     }
 
-    const before = await prisma.extraOrder.findUnique({
-      where: { id: params.id }
-    });
+    const body = await req.json();
+    const before = await prisma.extraOrder.findUnique({ where: { id: params.id } });
 
     if (!before) {
-      return Response.json(
-        { error: 'Nie znaleziono zlecenia.' },
-        { status: 404 }
-      );
+      return Response.json({ error: 'Nie znaleziono zlecenia.' }, { status: 404 });
     }
 
-    const body = await req.json();
+    if (user.role !== 'ADMIN' && before.userId !== user.id) {
+      return Response.json({ error: 'Brak uprawnień.' }, { status: 403 });
+    }
+
     const order = await prisma.extraOrder.update({
       where: { id: params.id },
-      data: orderData(body),
+      data: data(body),
       include: { company: true }
     });
 
@@ -99,19 +68,18 @@ export async function DELETE(req, { params }) {
   try {
     const user = await currentUser();
 
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !['ADMIN', 'WORKER'].includes(user.role)) {
       return Response.json({ error: 'Brak uprawnień.' }, { status: 403 });
     }
 
-    const before = await prisma.extraOrder.findUnique({
-      where: { id: params.id }
-    });
+    const before = await prisma.extraOrder.findUnique({ where: { id: params.id } });
 
     if (!before) {
-      return Response.json(
-        { error: 'Nie znaleziono zlecenia.' },
-        { status: 404 }
-      );
+      return Response.json({ error: 'Nie znaleziono zlecenia.' }, { status: 404 });
+    }
+
+    if (user.role !== 'ADMIN' && before.userId !== user.id) {
+      return Response.json({ error: 'Brak uprawnień.' }, { status: 403 });
     }
 
     await prisma.extraOrder.delete({ where: { id: params.id } });
