@@ -934,8 +934,8 @@ async function deleteQuickNote(note){
       <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:12,alignItems:'center'}}>
        <input placeholder="np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/>
        <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}}>
-        <input type="checkbox" checked={!!form.travelEnabled} onChange={e=>setForm({...form,travelEnabled:e.target.checked,travelTime:e.target.checked?form.travelTime:''})} style={{width:'auto'}}/>
-        ✅ Dojazd
+        <input className="travelCheckbox" type="checkbox" checked={!!form.travelEnabled} onChange={e=>setForm({...form,travelEnabled:e.target.checked,travelTime:e.target.checked?form.travelTime:''})}/>
+        Dojazd
        </label>
       </div>
       {form.travelEnabled&&<div style={{marginTop:10}}>
