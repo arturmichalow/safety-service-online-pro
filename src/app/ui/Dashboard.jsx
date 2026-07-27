@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import jsPDF from 'jspdf';
 
-const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['initialTrainings','Szkolenia wstępne'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
+const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
 const workTypes=['dokumentacja','audyt','szkolenie','dojazd','email','telefon','inne'];
 const orderTypes=['szkolenie','audyt','ratownik','pomiary oświetlenia','dokumentacja','konsultacje','wypadek','inne'];
 function minToText(m){const h=Math.floor((m||0)/60),mm=(m||0)%60;return `${h}h ${mm}m`}
@@ -798,60 +798,13 @@ async function deleteQuickNote(note){
  async function deleteUser(u){if(!confirm(`Czy na pewno usunąć pracownika: ${u.name}?`))return;try{await jsonFetch('/api/users/'+u.id,{method:'DELETE'});if(editUser?.id===u.id)setEditUser(null);await load();alert('Pracownik usunięty.')}catch(err){alert(err.message)}}
  return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>has(user,key)&&!(user.role==='WORKER'&&key==='extraOrders')&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
  {tab==='dashboard'&&
-  <div className="panel">
-    <div className="row between">
-      <h1>Podsumowanie</h1>
-
-      <label>
-        Miesiąc:
-        <input
-          type="month"
-          value={selectedMonth}
-          onChange={e=>setSelectedMonth(e.target.value)}
-          style={{marginLeft:8, maxWidth:180}}
-        />
-      </label>
-    </div>
-
-    <div className="kpis">
-      <div className="card">Przychód w miesiącu<h2>{money(stats.totalIncome)}</h2></div>
-      <div className="card">Zysk po kosztach<h2>{money(adminKpis.totalProfit)}</h2></div>
-      <div className="card">Łączny czas pracy<h2>{minToText(stats.totalMin)}</h2></div>
-      <div className="card">Średnia stawka efektywna<h2>{money(adminKpis.averageRate)}/h</h2></div>
-      <div className="card" style={{borderLeft:'6px solid #159447'}}>Firmy bardzo dobre<h2>{adminKpis.profitable}</h2></div>
-      <div className="card" style={{borderLeft:'6px solid #b88900'}}>Firmy do obserwacji<h2>{adminKpis.watch}</h2></div>
-      <div className="card" style={{borderLeft:'6px solid #f07c00'}}>Firmy zagrożone<h2>{adminKpis.atRisk}</h2></div>
-      <div className="card" style={{borderLeft:'6px solid #d9343a'}}>Firmy nierentowne<h2>{adminKpis.unprofitable}</h2></div>
-      <div className="card" style={{borderLeft:'6px solid #7b8794'}}>Firmy bez danych<h2>{adminKpis.noData}</h2></div>
-      <div className="card">Zlecenia oczekujące na rozliczenie<h2>{adminKpis.pendingOrders}</h2></div>
-    </div>
-
-    <div className="card" style={{marginTop:16,marginBottom:16}}>
-      <div className="row between" style={{gap:18,flexWrap:'wrap'}}>
-       <div><span className="muted">Wszystkie firmy</span><h3 style={{margin:'4px 0 0'}}>{stats.rows.length}</h3></div>
-       <div><span className="muted">Łączne koszty</span><h3 style={{margin:'4px 0 0'}}>{money(adminKpis.totalCosts)}</h3></div>
-       <div><span className="muted">Najbardziej rentowna firma</span><h3 style={{margin:'4px 0 0'}}>{stats.best?.name||'-'}</h3></div>
-      </div>
-    </div>
-
-    <div className="card" style={{marginBottom:16}}>
-     <h2 style={{marginTop:0}}>Ocena kondycji firm</h2>
-     <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-      {[
-       ['#159447','Bardzo dobra','zysk min. 3 000 zł i stawka min. 250 zł/h'],
-       ['#b88900','Do obserwacji','zysk dodatni, ale stawka poniżej 250 zł/h lub zysk poniżej 3 000 zł'],
-       ['#f07c00','Zagrożona','stawka efektywna poniżej 150 zł/h'],
-       ['#d9343a','Nierentowna','wynik finansowy poniżej 0 zł'],
-       ['#7b8794','Brak danych','brak czasu, przychodu i kosztów w wybranym miesiącu']
-      ].map(([color,label,description])=><div key={label} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:'1px solid #d8e0e8',borderRadius:10,background:'#fff'}}>
-       <span style={{width:12,height:12,borderRadius:'50%',background:color,flex:'0 0 auto'}}></span>
-       <span><b>{label}</b><span className="muted" style={{display:'block',fontSize:12}}>{description}</span></span>
-      </div>)}
-     </div>
-    </div>
-
-    <SummaryTable rows={stats.rows} selectedMonth={selectedMonth}/>
-  </div>
+  <AdminOverview
+   rows={stats.rows}
+   data={data}
+   selectedMonth={selectedMonth}
+   setSelectedMonth={setSelectedMonth}
+   adminKpis={adminKpis}
+  />
 }
  {tab==='clients'&&<div className="panel"><div className="grid"><form className="card" onSubmit={saveCompany}><h2>Dodaj firmę</h2><input name="name" placeholder="Nazwa firmy" required/><input name="nip" placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/><input name="address" placeholder="Adres"/><input name="contactPerson" placeholder="Osoba kontaktowa"/><input name="phone" placeholder="Telefon"/><input name="email" placeholder="Email"/><input name="serviceType" placeholder="Typ obsługi"/><select name="assignedUserId"><option value="">Przypisz pracownika</option>{data.users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><select name="status"><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select><select name="billingType"><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select><input name="netAmount" type="number" placeholder="Kwota netto miesięcznie"/><input name="travelCost" type="number" placeholder="Koszt dojazdów"/><input name="extraCost" type="number" placeholder="Dodatkowe koszty"/><input name="extraCostDescription" placeholder="Opis dodatkowych kosztów / uwagi"/><button className="orange">Zapisz</button></form><div className="card"><h2>Baza firm</h2><div className="filterBar"><input placeholder="Szukaj firmy..." value={companySearch} onChange={e=>setCompanySearch(e.target.value)}/><select value={companySort} onChange={e=>setCompanySort(e.target.value)}><option value="name_asc">Nazwa A-Z</option><option value="name_desc">Nazwa Z-A</option><option value="money_desc">Największa kwota</option><option value="money_asc">Najmniejsza kwota</option></select><select value={companyStatus} onChange={e=>setCompanyStatus(e.target.value)}><option value="ALL">Wszystkie statusy</option><option value="ACTIVE">Aktywne</option><option value="PAUSED">Zawieszone</option><option value="INACTIVE">Nieaktywne</option></select></div><div className="muted">Widoczne firmy: {filteredCompanies.length} / {data.companies.length}</div><div className="tableWrap"><table><thead><tr><th>Status</th><th>Firma</th><th>NIP</th><th>Pracownik</th><th>Kwota miesięczna</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{filteredCompanies.map(c=><tr className="clickable" key={c.id} onClick={()=>setSelectedCompany(c)}><td><span className={'status '+c.status}></span></td><td>{c.name}</td><td>{c.nip||'-'}</td><td>{c.assignedUser?.name||'-'}</td><td>{money(c.netAmount)}</td><td>{c.extraCostDescription||'-'}</td><td><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();setSelectedCompany(c)}}>✏️</button><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();deleteCompany(c)}}>🗑️</button></td></tr>)}</tbody></table></div>{selectedCompany&&<CompanyDetails key={selectedCompany.id} company={selectedCompany} users={data.users} orders={data.extraOrders.filter(o=>o.companyId===selectedCompany.id)} onSubmit={updateCompany} onDelete={()=>deleteCompany(selectedCompany)}/>}</div></div></div>}
  {tab==='employees'&&<div className="panel"><h1>Baza pracowników</h1><div className="employeeGrid">{data.users.map(u=><EmployeeCard key={u.id} u={u} onEdit={()=>{setTab('users');setEditUser(u)}} onDelete={()=>deleteUser(u)}/>)}</div></div>}
@@ -1072,8 +1025,7 @@ async function deleteQuickNote(note){
  }
  {tab==='extraOrders'&&<ExtraOrdersPanel data={data} order={order} setOrder={setOrder} addExtraOrder={addExtraOrder} deleteExtraOrder={deleteExtraOrder}/>} 
  {tab==='shopOrders'&&<ShopOrdersPanel data={data} shopOrder={shopOrder} setShopOrder={setShopOrder} addShopOrder={addShopOrder} deleteExtraOrder={deleteExtraOrder}/>} 
- {tab==='initialTrainings'&&<InitialTrainingsPanel data={data} training={training} setTraining={setTraining} addInitialTraining={addInitialTraining} deleteExtraOrder={deleteExtraOrder}/>} 
- {tab==='ai'&&<div className="panel"><h1>AI analiza rentowności</h1><button className="orange" onClick={runAi}>Uruchom AI analizę</button><p>{ai||'AI obliczy rentowność każdego klienta i poda konkretne podpowiedzi. Uwzględnia obsługę miesięczną, zlecenia dodatkowe, dojazdy, koszty dodatkowe i koszt czasu pracy.'}</p></div>}
+{tab==='ai'&&<div className="panel"><h1>AI analiza rentowności</h1><button className="orange" onClick={runAi}>Uruchom AI analizę</button><p>{ai||'AI obliczy rentowność każdego klienta i poda konkretne podpowiedzi. Uwzględnia obsługę miesięczną, zlecenia dodatkowe, dojazdy, koszty dodatkowe i koszt czasu pracy.'}</p></div>}
  {tab==='charts'&&<ChartPanel title="Wykres czasu pracy" rows={stats.rows.slice().sort((a,b)=>b.hours-a.hours).slice(0,12)} dataKey="hours" color="#ff5a14"/>}
  {tab==='profitCharts'&&<ChartPanel title="Wykres rentowności" rows={stats.rows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit).slice(0,12)} dataKey="profit" color="#132734"/>}
  {tab==='import'&&<div className="panel"><h1>Import danych</h1><p>Excel: Nazwa firmy, Kwota, Uwagi, Pracownik. Wartość BIURO przypisze firmę do Arkadiusza Źrebca.</p><form action="/api/import/excel" method="post" encType="multipart/form-data"><input type="file" name="file" accept=".xlsx,.csv"/><button className="orange">Import danych</button></form></div>}
@@ -1422,152 +1374,162 @@ async function deleteQuickNote(note){
 }
 
 
-function SummaryTable({rows, selectedMonth}){
 
- const [sort,setSort]=useState({
-  key:'profit',
-  direction:'desc'
+function previousMonthValue(month){
+ const [year,monthNumber]=String(month||'').split('-').map(Number);
+ const date=new Date(year,monthNumber-2,1);
+ return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+}
+
+function calculateRowsForMonth(data,month){
+ const rows=(data.companies||[]).map(c=>{
+  const entries=(data.workEntries||[]).filter(w=>w.companyId===c.id&&String(w.date||'').slice(0,7)===month);
+  const orders=(data.extraOrders||[]).filter(o=>o.companyId===c.id&&String(o.date||'').slice(0,7)===month);
+  const trainings=orders.filter(o=>String(o.type||'').toLowerCase()==='szkolenie wstępne');
+  const normalOrders=orders.filter(o=>String(o.type||'').toLowerCase()!=='szkolenie wstępne');
+  const shopOrders=normalOrders.filter(o=>String(o.type||'').toLowerCase()==='zlecenie sklep');
+  const regularOrders=normalOrders.filter(o=>String(o.type||'').toLowerCase()!=='zlecenie sklep');
+  const workMinutes=entries.reduce((sum,row)=>sum+Number(row.minutes||0),0);
+  const orderMinutes=normalOrders.reduce((sum,row)=>sum+Number(row.minutes||0),0);
+  const trainingMinutes=trainings.reduce((sum,row)=>sum+Number(row.minutes||0),0);
+  const minutes=workMinutes+orderMinutes+trainingMinutes;
+  const netMonthly=Number(c.netAmount||0);
+  const monthly=netMonthly>0||String(c.billingType||'').toUpperCase()==='MONTHLY';
+  const netOrders=regularOrders.reduce((sum,row)=>sum+Number(row.netAmount||0),0)+shopOrders.reduce((sum,row)=>sum+getShopMargin(row),0);
+  const trainingAmount=trainings.reduce((sum,row)=>sum+Number(row.netAmount||0),0);
+  const netTotal=netMonthly+netOrders+(monthly?0:trainingAmount);
+  const costs=Number(c.travelCost||0)+Number(c.extraCost||0)+entries.reduce((sum,row)=>sum+Number(row.additionalCost||0),0)+normalOrders.reduce((sum,row)=>sum+Number(row.travelCost||0)+Number(row.extraCost||0),0);
+  const timeCost=(workMinutes/60)*150+(orderMinutes/60)*250+(trainingMinutes/60)*(monthly?150:0);
+  const profit=netTotal-costs-timeCost;
+  const rate=minutes?profit/(minutes/60):0;
+  const activities=[...entries,...orders].map(row=>row.createdAt||row.date).filter(Boolean).sort((a,b)=>new Date(b)-new Date(a));
+  return {...c,entries,orders,minutes,netMonthly,netOrders,netTotal,costs,timeCost,profit,rate,hours:minutes/60,lastActivity:activities[0]||null,orderCount:normalOrders.length};
  });
+ const grouped=new Map();
+ rows.forEach(row=>{
+  const key=String(row.name||'').trim().toLowerCase();
+  if(!grouped.has(key)){grouped.set(key,{...row});return;}
+  const target=grouped.get(key);
+  ['minutes','netMonthly','netOrders','netTotal','costs','timeCost','profit','orderCount'].forEach(field=>target[field]=Number(target[field]||0)+Number(row[field]||0));
+  target.entries=[...(target.entries||[]),...(row.entries||[])];
+  target.orders=[...(target.orders||[]),...(row.orders||[])];
+  target.rate=target.minutes?target.profit/(target.minutes/60):0;
+  if(row.lastActivity&&(!target.lastActivity||new Date(row.lastActivity)>new Date(target.lastActivity)))target.lastActivity=row.lastActivity;
+ });
+ return [...grouped.values()];
+}
 
- function sortRows(list){
-  const sorted=[...list];
+function percentChange(current,previous){
+ const c=Number(current||0),p=Number(previous||0);
+ if(!p)return c?100:0;
+ return ((c-p)/Math.abs(p))*100;
+}
 
-  sorted.sort((a,b)=>{
-   let av=a[sort.key];
-   let bv=b[sort.key];
+function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
+ const [healthFilter,setHealthFilter]=useState('ALL');
+ const [workerFilter,setWorkerFilter]=useState('ALL');
+ const [billingFilter,setBillingFilter]=useState('ALL');
+ const [search,setSearch]=useState('');
+ const [selectedDetail,setSelectedDetail]=useState(null);
+ const previousMonth=previousMonthValue(selectedMonth);
+ const previousRows=useMemo(()=>calculateRowsForMonth(data,previousMonth),[data,previousMonth]);
+ const previousMap=useMemo(()=>new Map(previousRows.map(row=>[String(row.name||'').toLowerCase(),row])),[previousRows]);
+ const totalPrevious=useMemo(()=>previousRows.reduce((sum,row)=>sum+Number(row.profit||0),0),[previousRows]);
+ const incomePrevious=useMemo(()=>previousRows.reduce((sum,row)=>sum+Number(row.netTotal||0),0),[previousRows]);
+ const minutesPrevious=useMemo(()=>previousRows.reduce((sum,row)=>sum+Number(row.minutes||0),0),[previousRows]);
+ const ratePrevious=minutesPrevious?totalPrevious/(minutesPrevious/60):0;
 
-   if(typeof av==='string'){
-    av=av.toLowerCase();
-    bv=bv.toLowerCase();
-   }
-
-   if(av>bv)return sort.direction==='asc'?1:-1;
-   if(av<bv)return sort.direction==='asc'?-1:1;
-
-   return 0;
+ const alerts=useMemo(()=>{
+  const list=[];
+  rows.forEach(row=>{
+   const health=getCompanyHealth(row);
+   if(health.key==='UNPROFITABLE')list.push({level:'danger',text:`${row.name}: strata ${money(Math.abs(row.profit))}.`});
+   else if(health.key==='AT_RISK')list.push({level:'warning',text:`${row.name}: stawka efektywna tylko ${Number(row.rate||0).toFixed(2)} zł/h.`});
+   if(Number(row.minutes||0)>=2400&&Number(row.netMonthly||0)>0)list.push({level:'warning',text:`${row.name}: ponad 40 godzin obsługi w miesiącu.`});
+   if(Number(row.costs||0)>Number(row.netTotal||0)*0.3&&Number(row.costs||0)>0)list.push({level:'warning',text:`${row.name}: wysokie koszty dodatkowe (${money(row.costs)}).`});
+   if(health.key==='NO_DATA'&&String(row.status||'')!=='INACTIVE')list.push({level:'info',text:`${row.name}: brak aktywności w wybranym miesiącu.`});
   });
+  return list.slice(0,12);
+ },[rows]);
 
-  return sorted;
- }
+ const filteredRows=useMemo(()=>rows.filter(row=>{
+  const health=getCompanyHealth(row).key;
+  const assigned=row.assignedUser?.id||row.assignedUserId||'';
+  const billing=String(row.billingType||'').toUpperCase();
+  return (healthFilter==='ALL'||health===healthFilter)&&
+   (workerFilter==='ALL'||assigned===workerFilter)&&
+   (billingFilter==='ALL'||billing===billingFilter)&&
+   String(row.name||'').toLowerCase().includes(search.toLowerCase());
+ }),[rows,healthFilter,workerFilter,billingFilter,search]);
 
- function toggleSort(key){
-  setSort(prev=>({
-   key,
-   direction:
-    prev.key===key
-     ? prev.direction==='asc'
-       ? 'desc'
-       : 'asc'
-     : 'desc'
-  }));
- }
+ const best=[...rows].filter(row=>Number(row.netTotal||0)||Number(row.minutes||0)).sort((a,b)=>b.profit-a.profit).slice(0,5);
+ const weakest=[...rows].filter(row=>Number(row.netTotal||0)||Number(row.minutes||0)).sort((a,b)=>a.profit-b.profit).slice(0,5);
+ const comparison=[
+  {name:'Przychód',poprzedni:incomePrevious,bieżący:rows.reduce((s,r)=>s+Number(r.netTotal||0),0)},
+  {name:'Zysk',poprzedni:totalPrevious,bieżący:rows.reduce((s,r)=>s+Number(r.profit||0),0)},
+  {name:'Koszty',poprzedni:previousRows.reduce((s,r)=>s+Number(r.costs||0)+Number(r.timeCost||0),0),bieżący:rows.reduce((s,r)=>s+Number(r.costs||0)+Number(r.timeCost||0),0)}
+ ];
+ const workers=useMemo(()=>{
+  return (data.users||[]).map(worker=>{
+   const entries=(data.workEntries||[]).filter(entry=>entry.userId===worker.id&&String(entry.date||'').slice(0,7)===selectedMonth);
+   const companyIds=new Set(entries.map(entry=>entry.companyId));
+   const minutes=entries.reduce((sum,entry)=>sum+Number(entry.minutes||0),0);
+   const counts={};entries.forEach(entry=>counts[entry.companyId]=(counts[entry.companyId]||0)+Number(entry.minutes||0));
+   const topId=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0];
+   return {...worker,minutes,entryCount:entries.length,companyCount:companyIds.size,topCompany:(data.companies||[]).find(c=>c.id===topId)?.name||'-'};
+  }).filter(worker=>worker.role==='WORKER'||worker.minutes>0);
+ },[data,selectedMonth]);
 
- function arrow(key){
-  if(sort.key!==key)return '↕';
-
-  return sort.direction==='asc'
-   ? '↑'
-   : '↓';
- }
-
- const sortedRows=sortRows(rows);
-
- return (
-  <div className="card">
-   <h2>Podsumowanie</h2>
-
-   <div className="tableWrap">
-    <table>
-     <thead>
-      <tr>
-       <th>Ocena</th>
-       <th onClick={()=>toggleSort('name')} style={{cursor:'pointer'}}>
-        Firma {arrow('name')}
-       </th>
-
-       <th onClick={()=>toggleSort('minutes')} style={{cursor:'pointer'}}>
-        Godziny {arrow('minutes')}
-       </th>
-
-       <th onClick={()=>toggleSort('netMonthly')} style={{cursor:'pointer'}}>
-        Kwota miesięczna {arrow('netMonthly')}
-       </th>
-
-       <th onClick={()=>toggleSort('netOrders')} style={{cursor:'pointer'}}>
-        Zlecenia dodatkowe {arrow('netOrders')}
-       </th>
-
-       <th onClick={()=>toggleSort('trainingAmount')} style={{cursor:'pointer'}}>
-        Szkolenia wstępne {arrow('trainingAmount')}
-       </th>
-
-       <th onClick={()=>toggleSort('costs')} style={{cursor:'pointer'}}>
-        Koszty {arrow('costs')}
-       </th>
-
-       <th onClick={()=>toggleSort('timeCost')} style={{cursor:'pointer'}}>
-        Koszt czasu {arrow('timeCost')}
-       </th>
-
-       <th onClick={()=>toggleSort('profit')} style={{cursor:'pointer'}}>
-        Zysk po kosztach {arrow('profit')}
-       </th>
-
-       <th onClick={()=>toggleSort('rate')} style={{cursor:'pointer'}}>
-        Stawka/h {arrow('rate')}
-       </th>
-
-       <th onClick={()=>toggleSort('rent')} style={{cursor:'pointer'}}>
-        Rentowność {arrow('rent')}
-       </th>
-       <th>PDF</th>
-      </tr>
-     </thead>
-
-     <tbody>
-      {sortedRows.map(r=>{
-       const health=getCompanyHealth(r);
-       return <tr key={r.id} style={{background:health.background}}>
-        <td>
-         <span style={{display:'inline-flex',alignItems:'center',gap:7,padding:'5px 9px',borderRadius:999,border:`1px solid ${health.color}`,color:health.color,background:'#fff',fontWeight:800,whiteSpace:'nowrap'}}>
-          <span style={{width:9,height:9,borderRadius:'50%',background:health.color}}></span>
-          {health.label}
-         </span>
-        </td>
-        <td>
-         <span className={'status '+r.status}></span>
-         {r.name}
-        </td>
-
-        <td>{minToText(r.minutes)}</td>
-        <td>{money(r.netMonthly)}</td>
-        <td>{money(r.netOrders)}</td>
-        <td>{money(r.trainingAmount||0)}</td>
-        <td>{money(r.costs||0)}</td>
-        <td>{money(r.timeCost||0)}</td>
-        <td>{money(r.profit||0)}</td>
-        <td>{r.rate.toFixed(2)} zł/h</td>
-        <td>{r.rent}</td>
-        <td>
-  <button
-    className="orange"
-    type="button"
-    onClick={() => generateProfitPdf(r, selectedMonth)}
-  >
-    PDF
-  </button>
-</td>
-       </tr>
-      })}
-     </tbody>
-    </table>
-   </div>
-
-   <p className="muted">
-    Rentowność = kwota netto miesięczna + zlecenia dodatkowe + szkolenia wstępne - koszt dojazdów - dodatkowe koszty - koszt czasu pracy.
-   </p>
+ return <div className="panel">
+  <div className="row between"><h1>Centrum zarządzania</h1><label>Miesiąc: <input type="month" value={selectedMonth} onChange={e=>setSelectedMonth(e.target.value)} style={{marginLeft:8,maxWidth:180}}/></label></div>
+  <div className="kpis">
+   <div className="card">Przychód<h2>{money(rows.reduce((s,r)=>s+Number(r.netTotal||0),0))}</h2><small>{percentChange(rows.reduce((s,r)=>s+Number(r.netTotal||0),0),incomePrevious).toFixed(1)}% m/m</small></div>
+   <div className="card">Zysk po kosztach<h2>{money(adminKpis.totalProfit)}</h2><small>{percentChange(adminKpis.totalProfit,totalPrevious).toFixed(1)}% m/m</small></div>
+   <div className="card">Łączny czas<h2>{minToText(rows.reduce((s,r)=>s+Number(r.minutes||0),0))}</h2><small>{percentChange(rows.reduce((s,r)=>s+Number(r.minutes||0),0),minutesPrevious).toFixed(1)}% m/m</small></div>
+   <div className="card">Średnia stawka<h2>{Number(adminKpis.averageRate||0).toFixed(2)} zł/h</h2><small>{percentChange(adminKpis.averageRate,ratePrevious).toFixed(1)}% m/m</small></div>
+   <button type="button" className="card" onClick={()=>setHealthFilter('VERY_GOOD')} style={{textAlign:'left',borderLeft:'6px solid #159447'}}>Bardzo dobre<h2>{adminKpis.profitable}</h2></button>
+   <button type="button" className="card" onClick={()=>setHealthFilter('WATCH')} style={{textAlign:'left',borderLeft:'6px solid #b88900'}}>Do obserwacji<h2>{adminKpis.watch}</h2></button>
+   <button type="button" className="card" onClick={()=>setHealthFilter('AT_RISK')} style={{textAlign:'left',borderLeft:'6px solid #f07c00'}}>Zagrożone<h2>{adminKpis.atRisk}</h2></button>
+   <button type="button" className="card" onClick={()=>setHealthFilter('UNPROFITABLE')} style={{textAlign:'left',borderLeft:'6px solid #d9343a'}}>Nierentowne<h2>{adminKpis.unprofitable}</h2></button>
   </div>
- )
+
+  <div className="card" style={{marginTop:16}}><h2>Wymagają uwagi</h2>{alerts.length===0?<p className="muted">Brak istotnych alertów.</p>:<div style={{display:'grid',gap:8}}>{alerts.map((alert,index)=><div key={index} className={alert.level==='danger'?'warnBox':'infoBox'} style={{borderLeft:`5px solid ${alert.level==='danger'?'#d9343a':alert.level==='warning'?'#f07c00':'#7b8794'}`}}>{alert.text}</div>)}</div>}</div>
+
+  <div className="grid" style={{marginTop:16}}>
+   <div className="card"><h2>Najlepsze firmy</h2>{best.map((row,index)=><div key={row.id||row.name} className="row between" style={{padding:'8px 0',borderBottom:'1px solid #e6ebf0'}}><span>{index+1}. <b>{row.name}</b></span><span>{money(row.profit)}</span></div>)}</div>
+   <div className="card"><h2>Najsłabsze firmy</h2>{weakest.map((row,index)=><div key={row.id||row.name} className="row between" style={{padding:'8px 0',borderBottom:'1px solid #e6ebf0'}}><span>{index+1}. <b>{row.name}</b></span><span>{money(row.profit)} / {Number(row.rate||0).toFixed(2)} zł/h</span></div>)}</div>
+  </div>
+
+  <div className="card" style={{marginTop:16}}><h2>Porównanie z poprzednim miesiącem ({previousMonth})</h2><div style={{height:280}}><ResponsiveContainer width="100%" height="100%"><BarChart data={comparison}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip formatter={value=>money(value)}/><Legend/><Bar dataKey="poprzedni" name="Poprzedni miesiąc" fill="#7b8794"/><Bar dataKey="bieżący" name="Bieżący miesiąc" fill="#ff5a14"/></BarChart></ResponsiveContainer></div></div>
+
+  <div className="card" style={{marginTop:16}}><h2>Firmy — pełny podgląd</h2>
+   <div className="filterBar"><input placeholder="Szukaj firmy..." value={search} onChange={e=>setSearch(e.target.value)}/><select value={healthFilter} onChange={e=>setHealthFilter(e.target.value)}><option value="ALL">Wszystkie oceny</option><option value="VERY_GOOD">Bardzo dobre</option><option value="WATCH">Do obserwacji</option><option value="AT_RISK">Zagrożone</option><option value="UNPROFITABLE">Nierentowne</option><option value="NO_DATA">Bez danych</option></select><select value={workerFilter} onChange={e=>setWorkerFilter(e.target.value)}><option value="ALL">Wszyscy opiekunowie</option>{(data.users||[]).map(worker=><option key={worker.id} value={worker.id}>{worker.name}</option>)}</select><select value={billingFilter} onChange={e=>setBillingFilter(e.target.value)}><option value="ALL">Wszystkie rozliczenia</option><option value="MONTHLY">Miesięczne</option><option value="ONE_TIME">Jednorazowe</option><option value="HOURLY">Godzinowe</option></select><button type="button" className="light" onClick={()=>{setHealthFilter('ALL');setWorkerFilter('ALL');setBillingFilter('ALL');setSearch('')}}>Wyczyść</button></div>
+   <SummaryTable rows={filteredRows} selectedMonth={selectedMonth} previousMap={previousMap} onDetails={setSelectedDetail}/>
+  </div>
+
+  <div className="card" style={{marginTop:16}}><h2>Podsumowanie pracowników</h2><div className="tableWrap"><table><thead><tr><th>Pracownik</th><th>Liczba firm</th><th>Czas pracy</th><th>Liczba wpisów</th><th>Najczęściej obsługiwana firma</th></tr></thead><tbody>{workers.map(worker=><tr key={worker.id}><td>{worker.name}</td><td>{worker.companyCount}</td><td>{minToText(worker.minutes)}</td><td>{worker.entryCount}</td><td>{worker.topCompany}</td></tr>)}</tbody></table></div></div>
+
+  <div className="card" style={{marginTop:16}}><h2>Dzisiejsze alerty administracyjne</h2><p>• Firmy bez aktywności: <b>{adminKpis.noData}</b></p><p>• Zlecenia oczekujące na rozliczenie: <b>{adminKpis.pendingOrders}</b></p><p>• Firmy nierentowne: <b>{adminKpis.unprofitable}</b></p><p>• Pracownicy bez wpisów w tym miesiącu: <b>{workers.filter(worker=>worker.entryCount===0).length}</b></p></div>
+
+  {selectedDetail&&<CompanyAdminDetails row={selectedDetail} data={data} selectedMonth={selectedMonth} onClose={()=>setSelectedDetail(null)}/>} 
+ </div>
+}
+
+function CompanyAdminDetails({row,data,selectedMonth,onClose}){
+ const series=useMemo(()=>{
+  const result=[];const [year,month]=selectedMonth.split('-').map(Number);
+  for(let offset=5;offset>=0;offset--){const d=new Date(year,month-1-offset,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const current=calculateRowsForMonth(data,key).find(item=>String(item.name||'').toLowerCase()===String(row.name||'').toLowerCase());result.push({month:key,zysk:Number(current?.profit||0),czas:Number(current?.minutes||0)/60});}
+  return result;
+ },[data,row.name,selectedMonth]);
+ return <div className="card" style={{marginTop:16,border:'2px solid #ff5a14'}}><div className="row between"><h2>Szczegóły firmy: {row.name}</h2><button type="button" className="light" onClick={onClose}>Zamknij</button></div><div className="kpis"><div className="card">Przychód<h2>{money(row.netTotal)}</h2></div><div className="card">Koszty<h2>{money(Number(row.costs||0)+Number(row.timeCost||0))}</h2></div><div className="card">Zysk<h2>{money(row.profit)}</h2></div><div className="card">Stawka<h2>{Number(row.rate||0).toFixed(2)} zł/h</h2></div><div className="card">Czas<h2>{minToText(row.minutes)}</h2></div><div className="card">Opiekun<h2>{row.assignedUser?.name||'-'}</h2></div></div><div style={{height:260,marginTop:16}}><ResponsiveContainer width="100%" height="100%"><LineChart data={series}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month"/><YAxis/><Tooltip/><Legend/><Line type="monotone" dataKey="zysk" name="Zysk (zł)" stroke="#ff5a14"/><Line type="monotone" dataKey="czas" name="Czas (h)" stroke="#132734"/></LineChart></ResponsiveContainer></div><h3>Wpisy pracy</h3><div className="tableWrap"><table><thead><tr><th>Data</th><th>Pracownik</th><th>Typ</th><th>Opis</th><th>Czas</th></tr></thead><tbody>{(row.entries||[]).map(entry=><tr key={entry.id}><td>{String(entry.date||'').slice(0,10)}</td><td>{entry.user?.name||(data.users||[]).find(u=>u.id===entry.userId)?.name||'-'}</td><td>{entry.type||'-'}</td><td>{entry.description||entry.title||'-'}</td><td>{minToText(entry.minutes)}</td></tr>)}</tbody></table></div><h3>Zlecenia dodatkowe</h3><div className="tableWrap"><table><thead><tr><th>Data</th><th>Nazwa</th><th>Status</th><th>Kwota</th><th>Czas</th></tr></thead><tbody>{(row.orders||[]).filter(order=>String(order.type||'').toLowerCase()!=='szkolenie wstępne').map(order=><tr key={order.id}><td>{String(order.date||'').slice(0,10)}</td><td>{order.title}</td><td>{order.status}</td><td>{money(order.netAmount)}</td><td>{minToText(order.minutes)}</td></tr>)}</tbody></table></div></div>
+}
+
+function SummaryTable({rows, selectedMonth, previousMap=new Map(), onDetails}){
+ const [sort,setSort]=useState({key:'profit',direction:'desc'});
+ function toggleSort(key){setSort(prev=>({key,direction:prev.key===key&&prev.direction==='desc'?'asc':'desc'}))}
+ function arrow(key){return sort.key===key?(sort.direction==='asc'?'↑':'↓'):'↕'}
+ const sortedRows=[...rows].sort((a,b)=>{let av=a[sort.key],bv=b[sort.key];if(typeof av==='string'){av=av.toLowerCase();bv=String(bv||'').toLowerCase()}return av>bv?(sort.direction==='asc'?1:-1):av<bv?(sort.direction==='asc'?-1:1):0});
+ return <div className="tableWrap"><table><thead><tr><th>Ocena</th><th onClick={()=>toggleSort('name')} style={{cursor:'pointer'}}>Firma {arrow('name')}</th><th>Opiekun</th><th onClick={()=>toggleSort('minutes')} style={{cursor:'pointer'}}>Godziny {arrow('minutes')}</th><th onClick={()=>toggleSort('netTotal')} style={{cursor:'pointer'}}>Przychód {arrow('netTotal')}</th><th onClick={()=>toggleSort('costs')} style={{cursor:'pointer'}}>Koszty {arrow('costs')}</th><th onClick={()=>toggleSort('profit')} style={{cursor:'pointer'}}>Zysk {arrow('profit')}</th><th onClick={()=>toggleSort('rate')} style={{cursor:'pointer'}}>Stawka/h {arrow('rate')}</th><th>Zmiana m/m</th><th>Ostatnia aktywność</th><th>Akcje</th></tr></thead><tbody>{sortedRows.map(row=>{const health=getCompanyHealth(row);const previous=previousMap.get(String(row.name||'').toLowerCase());return <tr key={row.id||row.name} style={{background:health.background}}><td><span style={{display:'inline-flex',alignItems:'center',gap:6,padding:'5px 8px',border:`1px solid ${health.color}`,borderRadius:999,color:health.color,fontWeight:800,whiteSpace:'nowrap'}}><span style={{width:8,height:8,borderRadius:'50%',background:health.color}}></span>{health.label}</span></td><td><b>{row.name}</b></td><td>{row.assignedUser?.name||'-'}</td><td>{minToText(row.minutes)}</td><td>{money(row.netTotal)}</td><td>{money(Number(row.costs||0)+Number(row.timeCost||0))}</td><td>{money(row.profit)}</td><td>{Number(row.rate||0).toFixed(2)} zł/h</td><td>{percentChange(row.profit,previous?.profit).toFixed(1)}%</td><td>{row.lastActivity?new Date(row.lastActivity).toLocaleDateString('pl-PL'):'-'}</td><td><div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button type="button" className="light" onClick={()=>onDetails?.(row)}>Szczegóły</button><button className="orange" type="button" onClick={()=>generateProfitPdf(row,selectedMonth)}>PDF</button></div></td></tr>})}</tbody></table></div>
 }
 function Field({label,children}){return <label className="field"><span>{label}</span>{children}</label>}
 function CompanyDetails({company,users,orders,onSubmit,onDelete}){
