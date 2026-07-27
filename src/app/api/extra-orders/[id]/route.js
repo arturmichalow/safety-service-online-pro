@@ -11,7 +11,6 @@ function data(body) {
     netAmount: Number(body.netAmount || 0),
     travelCost: Number(body.travelCost || 0),
     extraCost: Number(body.extraCost || 0),
-    extraCostName: body.extraCostName || null,
     extraCostDescription: body.extraCostDescription || null,
     orderNumber: body.orderNumber || null,
     billingMode: body.billingMode === 'ONE_TIME' ? 'ONE_TIME' : 'MONTHLY',

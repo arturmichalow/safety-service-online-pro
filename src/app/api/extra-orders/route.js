@@ -15,7 +15,6 @@ function orderData(body, companyId) {
     netAmount: Number(body.netAmount || 0),
     travelCost: Number(body.travelCost || 0),
     extraCost: Number(body.extraCost || 0),
-    extraCostName: body.extraCostName || null,
     extraCostDescription: body.extraCostDescription || null,
     minutes: Number(body.minutes || 0),
     orderNumber: body.orderNumber || null,
@@ -64,7 +63,7 @@ export async function POST(req) {
       return Response.json({ error: 'Wpisz kwotę netto za zlecenie.' }, { status: 400 });
     }
 
-    if (isNewForm && Number(body.extraCost || 0) > 0 && !String(body.extraCostName || '').trim()) {
+    if (isNewForm && Number(body.extraCost || 0) > 0 && !String(body.extraCostDescription || '').trim()) {
       return Response.json({ error: 'Wpisz nazwę dodatkowego kosztu.' }, { status: 400 });
     }
 
@@ -120,7 +119,6 @@ export async function POST(req) {
               billingMode,
               netAmount: billingMode === 'ONE_TIME' ? Number(body.netAmount || 0) : 0,
               extraCost: billingMode === 'ONE_TIME' ? Number(body.extraCost || 0) : 0,
-              extraCostName: billingMode === 'ONE_TIME' ? body.extraCostName : null,
               extraCostDescription: billingMode === 'ONE_TIME' ? body.extraCostDescription : null
             },
             companyId
