@@ -35,6 +35,7 @@ model User {
   workEntries       WorkEntry[]
   extraOrders       ExtraOrder[]
   quickNotes        QuickNote[]
+  absences         Absence[]
   auditLogs         AuditLog[]
   assignedCompanies Company[]
   createdAt         DateTime    @default(now())
@@ -129,6 +130,24 @@ model ExtraOrder {
   status               String   @default("OPEN")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+model Absence {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  dateFrom  DateTime
+  dateTo    DateTime
+  minutes   Int      @default(480)
+  note      String?
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([dateFrom, dateTo])
+  @@index([status])
 }
 
 model AuditLog {
