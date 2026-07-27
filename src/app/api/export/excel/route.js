@@ -19,12 +19,84 @@ function monthRange(month) {
 export async function GET(req) {
   const user = await currentUser();
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !['ADMIN', 'WORKER'].includes(user.role)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
   const { month, start, end } = monthRange(searchParams.get('month'));
+
+
+  if (user.role === 'WORKER') {
+    const entries = await prisma.workEntry.findMany({
+      where: {
+        userId: user.id,
+        date: { gte: start, lt: end }
+      },
+      include: { company: true, user: true },
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }]
+    });
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Safety Service';
+
+    const history = wb.addWorksheet('Moje wpisy');
+    history.columns = [
+      { header: 'Data', key: 'date', width: 16 },
+      { header: 'Firma', key: 'company', width: 32 },
+      { header: 'Rodzaj pracy', key: 'type', width: 22 },
+      { header: 'Opis', key: 'description', width: 55 },
+      { header: 'Czas pracy', key: 'time', width: 16 },
+      { header: 'Minuty pracy', key: 'minutes', width: 16 },
+      { header: 'Dojazd', key: 'travel', width: 16 },
+      { header: 'Numer zlecenia / PO', key: 'orderNumber', width: 22 }
+    ];
+
+    entries.forEach(entry => {
+      history.addRow({
+        date: entry.date.toISOString().slice(0, 10),
+        company: entry.company?.name || '',
+        type: entry.type || entry.title || '',
+        description: entry.description || entry.title || '',
+        time: minToText(Number(entry.minutes || 0)),
+        minutes: Number(entry.minutes || 0),
+        travel: minToText(Number(entry.travelMinutes || 0)),
+        orderNumber: entry.orderNumber || ''
+      });
+    });
+
+    history.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    history.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5A14' } };
+    history.autoFilter = 'A1:H1';
+    history.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const totalMinutes = entries.reduce((sum, entry) => sum + Number(entry.minutes || 0), 0);
+    const totalTravelMinutes = entries.reduce((sum, entry) => sum + Number(entry.travelMinutes || 0), 0);
+    const companyCount = new Set(entries.map(entry => entry.companyId).filter(Boolean)).size;
+
+    const stats = wb.addWorksheet('Podsumowanie');
+    stats.addRows([
+      ['Raport pracownika', user.name || user.email || 'Pracownik'],
+      ['Miesiąc', month],
+      ['Liczba wpisów', entries.length],
+      ['Liczba firm', companyCount],
+      ['Łączny czas pracy', minToText(totalMinutes)],
+      ['Łączny czas dojazdów', minToText(totalTravelMinutes)]
+    ]);
+    stats.getColumn(1).width = 28;
+    stats.getColumn(2).width = 32;
+    stats.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    stats.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF132734' } };
+
+    const buffer = await wb.xlsx.writeBuffer();
+
+    return new Response(buffer, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="moje_wpisy_${month}.xlsx"`
+      }
+    });
+  }
 
   const companies = await prisma.company.findMany({
     include: {
