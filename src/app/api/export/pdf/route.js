@@ -22,7 +22,7 @@ function minToText(m) {
 export async function GET(req) {
   const user = await currentUser();
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !['ADMIN', 'WORKER'].includes(user.role)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -30,16 +30,21 @@ export async function GET(req) {
   const { month, start, end } = monthRange(searchParams.get('month'));
 
   const entries = await prisma.workEntry.findMany({
-    where: { date: { gte: start, lt: end } },
+    where: {
+      date: { gte: start, lt: end },
+      ...(user.role === 'WORKER' ? { userId: user.id } : {})
+    },
     include: { company: true, user: true },
     orderBy: { date: 'desc' }
   });
 
-  const orders = await prisma.extraOrder.findMany({
+  const orders = user.role === 'ADMIN'
+    ? await prisma.extraOrder.findMany({
     where: { date: { gte: start, lt: end } },
     include: { company: true },
     orderBy: { date: 'desc' }
-  });
+  })
+    : [];
 
   const totalMinutes = entries.reduce((s, e) => s + Number(e.minutes || 0), 0);
   const totalCosts = entries.reduce((s, e) => s + Number(e.additionalCost || 0), 0);
@@ -49,13 +54,12 @@ export async function GET(req) {
     <tr>
       <td>${e.date.toISOString().slice(0, 10)}</td>
       <td>${e.company?.name || ''}</td>
-      <td>${e.user?.name || ''}</td>
+      ${user.role === 'ADMIN' ? `<td>${e.user?.name || ''}</td>` : ''}
       <td>${e.title || ''}</td>
       <td>${e.description || ''}</td>
       <td>${minToText(e.minutes || 0)}</td>
       <td>${minToText(e.travelMinutes || 0)}</td>
-      <td>${money(e.additionalCost || 0)}</td>
-      <td>${e.additionalCostDescription || ''}</td>
+      ${user.role === 'ADMIN' ? `<td>${money(e.additionalCost || 0)}</td><td>${e.additionalCostDescription || ''}</td>` : ''}
     </tr>
   `).join('');
 
@@ -74,18 +78,19 @@ table{border-collapse:collapse;width:100%}
 </style>
 </head>
 <body>
-<h1>Raport Safety Service</h1>
+<h1>${user.role === 'ADMIN' ? 'Raport Safety Service' : 'Mój raport pracy'}</h1>
+${user.role === 'WORKER' ? `<p><b>Pracownik:</b> ${user.name || user.email || ''}</p>` : ''}
 <h2>Miesiąc: ${month}</h2>
 
 <div class="box"><b>Czas pracy</b><br>${minToText(totalMinutes)}</div>
-<div class="box"><b>Koszty dodatkowe</b><br>${money(totalCosts)}</div>
-<div class="box"><b>Zlecenia dodatkowe</b><br>${money(totalOrders)}</div>
+${user.role === 'ADMIN' ? `<div class="box"><b>Koszty dodatkowe</b><br>${money(totalCosts)}</div>
+<div class="box"><b>Zlecenia dodatkowe</b><br>${money(totalOrders)}</div>` : ''}
 <div class="box"><b>Liczba wpisów</b><br>${entries.length}</div>
 
 <h2>Historia pracy</h2>
 <table>
 <tr>
-<th>Data</th><th>Firma</th><th>Użytkownik</th><th>Czynność</th><th>Opis</th><th>Czas</th><th>Dojazd</th><th>Koszt</th><th>Opis kosztu</th>
+<th>Data</th><th>Firma</th>${user.role === 'ADMIN' ? '<th>Użytkownik</th>' : ''}<th>Czynność</th><th>Opis</th><th>Czas</th><th>Dojazd</th>${user.role === 'ADMIN' ? '<th>Koszt</th><th>Opis kosztu</th>' : ''}
 </tr>
 ${rows}
 </table>
