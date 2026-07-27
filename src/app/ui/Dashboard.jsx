@@ -1016,11 +1016,7 @@ async function deleteQuickNote(note){
         />
       </label>
 
-      <p className="muted" style={{marginTop:10}}>
-        {user.role==='ADMIN'
-          ? 'Eksport obejmuje dane wszystkich pracowników, firm, zleceń, szkoleń i rentowności z wybranego miesiąca.'
-          : 'Eksport obejmuje wyłącznie Twoje własne wpisy pracy z wybranego miesiąca. Dane innych pracowników i dane finansowe firm nie są udostępniane.'}
-      </p>
+      
 
       <div className="row" style={{marginTop:16}}>
         <a className="btn orange" href={`/api/export/excel?month=${selectedMonth}`}>
