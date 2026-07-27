@@ -1431,6 +1431,21 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
  const [billingFilter,setBillingFilter]=useState('ALL');
  const [search,setSearch]=useState('');
  const [selectedDetail,setSelectedDetail]=useState(null);
+
+ function applyHealthFilter(filter){
+  setHealthFilter(filter);
+  setTimeout(()=>{
+   document.getElementById('admin-company-table')?.scrollIntoView({behavior:'smooth',block:'start'});
+  },50);
+ }
+
+ const healthFilterLabels={
+  VERY_GOOD:'Bardzo dobre',
+  WATCH:'Do obserwacji',
+  AT_RISK:'Zagrożone',
+  UNPROFITABLE:'Nierentowne',
+  NO_DATA:'Bez danych'
+ };
  const previousMonth=previousMonthValue(selectedMonth);
  const previousRows=useMemo(()=>calculateRowsForMonth(data,previousMonth),[data,previousMonth]);
  const previousMap=useMemo(()=>new Map(previousRows.map(row=>[String(row.name||'').toLowerCase(),row])),[previousRows]);
@@ -1487,10 +1502,46 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
    <div className="card">Zysk po kosztach<h2>{money(adminKpis.totalProfit)}</h2><small>{percentChange(adminKpis.totalProfit,totalPrevious).toFixed(1)}% m/m</small></div>
    <div className="card">Łączny czas<h2>{minToText(rows.reduce((s,r)=>s+Number(r.minutes||0),0))}</h2><small>{percentChange(rows.reduce((s,r)=>s+Number(r.minutes||0),0),minutesPrevious).toFixed(1)}% m/m</small></div>
    <div className="card">Średnia stawka<h2>{Number(adminKpis.averageRate||0).toFixed(2)} zł/h</h2><small>{percentChange(adminKpis.averageRate,ratePrevious).toFixed(1)}% m/m</small></div>
-   <button type="button" className="card" onClick={()=>setHealthFilter('VERY_GOOD')} title="Kliknij, aby wyświetlić w tabeli tylko firmy bardzo dobre" aria-label="Pokaż tylko firmy bardzo dobre" style={{textAlign:'left',borderLeft:'6px solid #159447',cursor:'pointer'}}><b>Bardzo dobre</b><h2>{adminKpis.profitable}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać tylko firmy bardzo dobre.</small></button>
-   <button type="button" className="card" onClick={()=>setHealthFilter('WATCH')} title="Kliknij, aby wyświetlić w tabeli firmy do obserwacji" aria-label="Pokaż firmy do obserwacji" style={{textAlign:'left',borderLeft:'6px solid #b88900',cursor:'pointer'}}><b>Do obserwacji</b><h2>{adminKpis.watch}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać firmy wymagające obserwacji.</small></button>
-   <button type="button" className="card" onClick={()=>setHealthFilter('AT_RISK')} title="Kliknij, aby wyświetlić w tabeli tylko firmy zagrożone" aria-label="Pokaż tylko firmy zagrożone" style={{textAlign:'left',borderLeft:'6px solid #f07c00',cursor:'pointer'}}><b>Zagrożone</b><h2>{adminKpis.atRisk}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać firmy o niskiej stawce efektywnej.</small></button>
-   <button type="button" className="card" onClick={()=>setHealthFilter('UNPROFITABLE')} title="Kliknij, aby wyświetlić w tabeli tylko firmy nierentowne" aria-label="Pokaż tylko firmy nierentowne" style={{textAlign:'left',borderLeft:'6px solid #d9343a',cursor:'pointer'}}><b>Nierentowne</b><h2>{adminKpis.unprofitable}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać firmy generujące stratę.</small></button>
+   {[
+    {key:'VERY_GOOD',icon:'📈',label:'Bardzo dobre',count:adminKpis.profitable,color:'#159447',description:'Firmy z wysokim zyskiem i dobrą stawką efektywną.',action:'Pokaż tylko bardzo dobre firmy'},
+    {key:'WATCH',icon:'👀',label:'Do obserwacji',count:adminKpis.watch,color:'#b88900',description:'Firmy z dodatnim wynikiem, które wymagają regularnego monitorowania.',action:'Pokaż firmy do obserwacji'},
+    {key:'AT_RISK',icon:'⚠️',label:'Zagrożone',count:adminKpis.atRisk,color:'#f07c00',description:'Firmy z niską stawką efektywną lub zbyt dużym nakładem czasu.',action:'Pokaż zagrożone firmy'},
+    {key:'UNPROFITABLE',icon:'🚨',label:'Nierentowne',count:adminKpis.unprofitable,color:'#d9343a',description:'Firmy generujące stratę w wybranym miesiącu.',action:'Pokaż nierentowne firmy'}
+   ].map(tile=>
+    <button
+     key={tile.key}
+     type="button"
+     onClick={()=>applyHealthFilter(tile.key)}
+     title={tile.action}
+     aria-label={tile.action}
+     className="card"
+     style={{
+      textAlign:'left',
+      borderLeft:`6px solid ${tile.color}`,
+      cursor:'pointer',
+      color:'#111827',
+      background:'#fff',
+      padding:18,
+      minHeight:170,
+      display:'flex',
+      flexDirection:'column',
+      alignItems:'stretch',
+      justifyContent:'space-between'
+     }}
+    >
+     <div>
+      <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:800,fontSize:17}}>
+       <span aria-hidden="true">{tile.icon}</span>
+       <span>{tile.label}</span>
+      </div>
+      <h2 style={{margin:'10px 0 8px',color:'#111827'}}>{tile.count} firm</h2>
+      <p style={{margin:0,color:'#52606d',fontSize:13,lineHeight:1.4}}>{tile.description}</p>
+     </div>
+     <div style={{marginTop:14,paddingTop:10,borderTop:'1px solid #e5e9ee',fontWeight:800,color:tile.color,fontSize:13}}>
+      🔍 {tile.action}
+     </div>
+    </button>
+   )}
   </div>
 
   <div style={{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:16,marginTop:16,alignItems:'stretch'}}>
@@ -1513,7 +1564,11 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
 
   <div className="card" style={{marginTop:16}}><h2>Porównanie z poprzednim miesiącem ({previousMonth})</h2><div style={{height:280}}><ResponsiveContainer width="100%" height="100%"><BarChart data={comparison}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip formatter={value=>money(value)}/><Legend/><Bar dataKey="poprzedni" name="Poprzedni miesiąc" fill="#7b8794"/><Bar dataKey="bieżący" name="Bieżący miesiąc" fill="#ff5a14"/></BarChart></ResponsiveContainer></div></div>
 
-  <div className="card" style={{marginTop:16}}><h2>Firmy — pełny podgląd</h2>
+  <div id="admin-company-table" className="card" style={{marginTop:16,scrollMarginTop:20}}><h2>Firmy — pełny podgląd</h2>
+   {healthFilter!=='ALL'&&<div className="infoBox" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:12}}>
+    <span>Aktywny filtr: <b>{healthFilterLabels[healthFilter]||healthFilter}</b>. Tabela pokazuje tylko firmy z tej kategorii.</span>
+    <button type="button" className="light" onClick={()=>setHealthFilter('ALL')}>✕ Wyczyść filtr</button>
+   </div>}
    <div className="filterBar"><input placeholder="Szukaj firmy..." value={search} onChange={e=>setSearch(e.target.value)}/><select value={healthFilter} onChange={e=>setHealthFilter(e.target.value)}><option value="ALL">Wszystkie oceny</option><option value="VERY_GOOD">Bardzo dobre</option><option value="WATCH">Do obserwacji</option><option value="AT_RISK">Zagrożone</option><option value="UNPROFITABLE">Nierentowne</option><option value="NO_DATA">Bez danych</option></select><select value={workerFilter} onChange={e=>setWorkerFilter(e.target.value)}><option value="ALL">Wszyscy opiekunowie</option>{(data.users||[]).map(worker=><option key={worker.id} value={worker.id}>{worker.name}</option>)}</select><select value={billingFilter} onChange={e=>setBillingFilter(e.target.value)}><option value="ALL">Wszystkie rozliczenia</option><option value="MONTHLY">Miesięczne</option><option value="ONE_TIME">Jednorazowe</option><option value="HOURLY">Godzinowe</option></select><button type="button" className="light" onClick={()=>{setHealthFilter('ALL');setWorkerFilter('ALL');setBillingFilter('ALL');setSearch('')}}>Wyczyść</button></div>
    <SummaryTable rows={filteredRows} selectedMonth={selectedMonth} previousMap={previousMap} onDetails={setSelectedDetail}/>
   </div>
