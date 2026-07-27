@@ -934,8 +934,8 @@ async function deleteQuickNote(note){
       <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:12,alignItems:'center'}}>
        <input placeholder="np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/>
        <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}}>
-        <input className="travelCheckbox" type="checkbox" checked={!!form.travelEnabled} onChange={e=>setForm({...form,travelEnabled:e.target.checked,travelTime:e.target.checked?form.travelTime:''})}/>
-        Dojazd
+        <input type="checkbox" checked={!!form.travelEnabled} onChange={e=>setForm({...form,travelEnabled:e.target.checked,travelTime:e.target.checked?form.travelTime:''})} style={{width:'auto'}}/>
+        ✅ Dojazd
        </label>
       </div>
       {form.travelEnabled&&<div style={{marginTop:10}}>
@@ -1569,7 +1569,17 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
     <button type="button" className="light" onClick={()=>setHealthFilter('ALL')}>✕ Wyczyść filtr</button>
    </div>}
    <div className="filterBar"><input placeholder="Szukaj firmy..." value={search} onChange={e=>setSearch(e.target.value)}/><select value={healthFilter} onChange={e=>setHealthFilter(e.target.value)}><option value="ALL">Wszystkie oceny</option><option value="VERY_GOOD">Bardzo dobre</option><option value="WATCH">Do obserwacji</option><option value="AT_RISK">Zagrożone</option><option value="UNPROFITABLE">Nierentowne</option><option value="NO_DATA">Bez danych</option></select><select value={workerFilter} onChange={e=>setWorkerFilter(e.target.value)}><option value="ALL">Wszyscy opiekunowie</option>{(data.users||[]).map(worker=><option key={worker.id} value={worker.id}>{worker.name}</option>)}</select><select value={billingFilter} onChange={e=>setBillingFilter(e.target.value)}><option value="ALL">Wszystkie rozliczenia</option><option value="MONTHLY">Miesięczne</option><option value="ONE_TIME">Jednorazowe</option><option value="HOURLY">Godzinowe</option></select><button type="button" className="light" onClick={()=>{setHealthFilter('ALL');setWorkerFilter('ALL');setBillingFilter('ALL');setSearch('')}}>Wyczyść</button></div>
-   <SummaryTable rows={filteredRows} selectedMonth={selectedMonth} previousMap={previousMap} onDetails={setSelectedDetail}/>
+   <SummaryTable
+    rows={filteredRows}
+    selectedMonth={selectedMonth}
+    previousMap={previousMap}
+    onDetails={row=>{
+     setSelectedDetail(row);
+     setTimeout(()=>{
+      document.getElementById('admin-company-details')?.scrollIntoView({behavior:'smooth',block:'start'});
+     },80);
+    }}
+   />
   </div>
 
   <div className="card" style={{marginTop:16}}><h2>Podsumowanie pracowników</h2><div className="tableWrap"><table><thead><tr><th>Pracownik</th><th>Liczba firm</th><th>Czas pracy</th><th>Liczba wpisów</th><th>Najczęściej obsługiwana firma</th></tr></thead><tbody>{workers.map(worker=><tr key={worker.id}><td>{worker.name}</td><td>{worker.companyCount}</td><td>{minToText(worker.minutes)}</td><td>{worker.entryCount}</td><td>{worker.topCompany}</td></tr>)}</tbody></table></div></div>
@@ -1581,12 +1591,142 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
 }
 
 function CompanyAdminDetails({row,data,selectedMonth,onClose}){
+ const companyEntries=useMemo(()=>[
+  ...(row.entries||[]).map(entry=>({
+   id:`WORK-${entry.id}`,
+   source:'Obsługa miesięczna',
+   date:entry.date,
+   userId:entry.userId,
+   userName:entry.user?.name||(data.users||[]).find(user=>user.id===entry.userId)?.name||'Nieznany pracownik',
+   type:entry.type||'inne',
+   description:entry.description||entry.title||'-',
+   minutes:Number(entry.minutes||0),
+   travelMinutes:Number(entry.travelMinutes||0)
+  })),
+  ...(row.orders||[])
+   .filter(order=>String(order.type||'').toLowerCase()!=='szkolenie wstępne')
+   .map(order=>({
+    id:`EXTRA-${order.id}`,
+    source:'Zlecenie dodatkowe',
+    date:order.date,
+    userId:order.userId,
+    userName:order.user?.name||(data.users||[]).find(user=>user.id===order.userId)?.name||'Nieznany pracownik',
+    type:order.type||'inne',
+    description:order.description||order.title||'-',
+    minutes:Number(order.minutes||0),
+    travelMinutes:Number(order.travelMinutes||0)
+   }))
+ ].sort((a,b)=>new Date(b.date)-new Date(a.date)),[row.entries,row.orders,data.users]);
+
+ const totals=useMemo(()=>companyEntries.reduce((result,item)=>({
+  work:result.work+item.minutes,
+  travel:result.travel+item.travelMinutes,
+  total:result.total+item.minutes+item.travelMinutes
+ }),{work:0,travel:0,total:0}),[companyEntries]);
+
+ const byType=useMemo(()=>{
+  const map=new Map();
+  companyEntries.forEach(item=>{
+   const key=String(item.type||'inne').trim()||'inne';
+   const current=map.get(key)||{type:key,work:0,travel:0,total:0,count:0,workers:new Set()};
+   current.work+=item.minutes;
+   current.travel+=item.travelMinutes;
+   current.total+=item.minutes+item.travelMinutes;
+   current.count+=1;
+   current.workers.add(item.userName);
+   map.set(key,current);
+  });
+  return [...map.values()]
+   .map(item=>({...item,workerCount:item.workers.size}))
+   .sort((a,b)=>b.total-a.total);
+ },[companyEntries]);
+
+ const byWorker=useMemo(()=>{
+  const map=new Map();
+  companyEntries.forEach(item=>{
+   const key=item.userName||'Nieznany pracownik';
+   const current=map.get(key)||{name:key,work:0,travel:0,total:0,count:0};
+   current.work+=item.minutes;
+   current.travel+=item.travelMinutes;
+   current.total+=item.minutes+item.travelMinutes;
+   current.count+=1;
+   map.set(key,current);
+  });
+  return [...map.values()].sort((a,b)=>b.total-a.total);
+ },[companyEntries]);
+
  const series=useMemo(()=>{
   const result=[];const [year,month]=selectedMonth.split('-').map(Number);
   for(let offset=5;offset>=0;offset--){const d=new Date(year,month-1-offset,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const current=calculateRowsForMonth(data,key).find(item=>String(item.name||'').toLowerCase()===String(row.name||'').toLowerCase());result.push({month:key,zysk:Number(current?.profit||0),czas:Number(current?.minutes||0)/60});}
   return result;
  },[data,row.name,selectedMonth]);
- return <div className="card" style={{marginTop:16,border:'2px solid #ff5a14'}}><div className="row between"><h2>Szczegóły firmy: {row.name}</h2><button type="button" className="light" onClick={onClose}>Zamknij</button></div><div className="kpis"><div className="card">Przychód<h2>{money(row.netTotal)}</h2></div><div className="card">Koszty<h2>{money(Number(row.costs||0)+Number(row.timeCost||0))}</h2></div><div className="card">Zysk<h2>{money(row.profit)}</h2></div><div className="card">Stawka<h2>{Number(row.rate||0).toFixed(2)} zł/h</h2></div><div className="card">Czas<h2>{minToText(row.minutes)}</h2></div><div className="card">Opiekun<h2>{row.assignedUser?.name||'-'}</h2></div></div><div style={{height:260,marginTop:16}}><ResponsiveContainer width="100%" height="100%"><LineChart data={series}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month"/><YAxis/><Tooltip/><Legend/><Line type="monotone" dataKey="zysk" name="Zysk (zł)" stroke="#ff5a14"/><Line type="monotone" dataKey="czas" name="Czas (h)" stroke="#132734"/></LineChart></ResponsiveContainer></div><h3>Wpisy pracy</h3><div className="tableWrap"><table><thead><tr><th>Data</th><th>Pracownik</th><th>Typ</th><th>Opis</th><th>Czas</th></tr></thead><tbody>{(row.entries||[]).map(entry=><tr key={entry.id}><td>{String(entry.date||'').slice(0,10)}</td><td>{entry.user?.name||(data.users||[]).find(u=>u.id===entry.userId)?.name||'-'}</td><td>{entry.type||'-'}</td><td>{entry.description||entry.title||'-'}</td><td>{minToText(entry.minutes)}</td></tr>)}</tbody></table></div><h3>Zlecenia dodatkowe</h3><div className="tableWrap"><table><thead><tr><th>Data</th><th>Nazwa</th><th>Status</th><th>Kwota</th><th>Czas</th></tr></thead><tbody>{(row.orders||[]).filter(order=>String(order.type||'').toLowerCase()!=='szkolenie wstępne').map(order=><tr key={order.id}><td>{String(order.date||'').slice(0,10)}</td><td>{order.title}</td><td>{order.status}</td><td>{money(order.netAmount)}</td><td>{minToText(order.minutes)}</td></tr>)}</tbody></table></div></div>
+
+ return <div id="admin-company-details" className="card" style={{marginTop:16,border:'2px solid #ff5a14',scrollMarginTop:16}}>
+  <div className="row between">
+   <div>
+    <h2 style={{marginBottom:4}}>Szczegóły firmy: {row.name}</h2>
+    <div className="muted">Rozliczenie czasu za miesiąc {selectedMonth}</div>
+   </div>
+   <button type="button" className="light" onClick={onClose}>Zamknij</button>
+  </div>
+
+  <div className="kpis">
+   <div className="card">Przychód<h2>{money(row.netTotal)}</h2></div>
+   <div className="card">Koszty<h2>{money(Number(row.costs||0)+Number(row.timeCost||0))}</h2></div>
+   <div className="card">Zysk<h2>{money(row.profit)}</h2></div>
+   <div className="card">Stawka<h2>{Number(row.rate||0).toFixed(2)} zł/h</h2></div>
+   <div className="card">Czas pracy<h2>{minToText(totals.work)}</h2></div>
+   <div className="card">Czas dojazdów<h2>{minToText(totals.travel)}</h2></div>
+   <div className="card">Praca + dojazdy<h2>{minToText(totals.total)}</h2></div>
+   <div className="card">Opiekun<h2>{row.assignedUser?.name||'-'}</h2></div>
+  </div>
+
+  <div style={{height:260,marginTop:16}}>
+   <ResponsiveContainer width="100%" height="100%">
+    <LineChart data={series}>
+     <CartesianGrid strokeDasharray="3 3"/>
+     <XAxis dataKey="month"/>
+     <YAxis/>
+     <Tooltip/>
+     <Legend/>
+     <Line type="monotone" dataKey="zysk" name="Zysk (zł)" stroke="#ff5a14"/>
+     <Line type="monotone" dataKey="czas" name="Czas (h)" stroke="#132734"/>
+    </LineChart>
+   </ResponsiveContainer>
+  </div>
+
+  <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:16,marginTop:18}}>
+   <div className="card" style={{margin:0,minWidth:0}}>
+    <h3 style={{marginTop:0}}>Na co przeznaczono czas</h3>
+    <div className="tableWrap">
+     <table>
+      <thead><tr><th>Czynność</th><th>Wpisy</th><th>Praca</th><th>Dojazdy</th><th>Łącznie</th></tr></thead>
+      <tbody>{byType.map(item=><tr key={item.type}><td><b>{item.type}</b></td><td>{item.count}</td><td>{minToText(item.work)}</td><td>{item.travel?minToText(item.travel):'-'}</td><td><b>{minToText(item.total)}</b></td></tr>)}</tbody>
+     </table>
+    </div>
+   </div>
+
+   <div className="card" style={{margin:0,minWidth:0}}>
+    <h3 style={{marginTop:0}}>Czas według pracowników</h3>
+    <div className="tableWrap">
+     <table>
+      <thead><tr><th>Pracownik</th><th>Wpisy</th><th>Praca</th><th>Dojazdy</th><th>Łącznie</th></tr></thead>
+      <tbody>{byWorker.map(worker=><tr key={worker.name}><td><b>{worker.name}</b></td><td>{worker.count}</td><td>{minToText(worker.work)}</td><td>{worker.travel?minToText(worker.travel):'-'}</td><td><b>{minToText(worker.total)}</b></td></tr>)}</tbody>
+     </table>
+    </div>
+   </div>
+  </div>
+
+  <h3>Szczegółowa historia pracy i dojazdów</h3>
+  <div className="tableWrap">
+   <table>
+    <thead><tr><th>Data</th><th>Pracownik</th><th>Źródło</th><th>Czynność</th><th>Opis</th><th>Praca</th><th>Dojazd</th><th>Łącznie</th></tr></thead>
+    <tbody>{companyEntries.map(item=><tr key={item.id}><td>{String(item.date||'').slice(0,10)}</td><td>{item.userName}</td><td>{item.source}</td><td>{item.type}</td><td style={{maxWidth:520,whiteSpace:'normal'}}>{item.description}</td><td>{minToText(item.minutes)}</td><td>{item.travelMinutes?minToText(item.travelMinutes):'-'}</td><td><b>{minToText(item.minutes+item.travelMinutes)}</b></td></tr>)}</tbody>
+   </table>
+  </div>
+
+  {companyEntries.length===0&&<p className="muted">Brak wpisów pracy i zleceń w wybranym miesiącu.</p>}
+ </div>
 }
 
 function SummaryTable({rows, selectedMonth, previousMap=new Map(), onDetails}){
