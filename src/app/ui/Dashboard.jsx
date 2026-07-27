@@ -200,6 +200,21 @@ return {
   best: groupedRows.filter(r=>r.minutes||r.netTotal).sort((a,b)=>b.profit-a.profit)[0],
   time: [...groupedRows].sort((a,b)=>b.minutes-a.minutes)[0]
 }},[data,selectedMonth]);
+ const adminKpis=useMemo(()=>{
+  const rows=stats.rows||[];
+  const totalProfit=rows.reduce((sum,row)=>sum+Number(row.profit||0),0);
+  const totalCosts=rows.reduce((sum,row)=>sum+Number(row.costs||0)+Number(row.timeCost||0),0);
+  const totalHours=Number(stats.totalMin||0)/60;
+  const averageRate=totalHours>0?totalProfit/totalHours:0;
+  const profitable=rows.filter(row=>Number(row.profit||0)>0&&Number(row.rate||0)>=250).length;
+  const watch=rows.filter(row=>Number(row.profit||0)>0&&Number(row.rate||0)<250).length;
+  const unprofitable=rows.filter(row=>Number(row.profit||0)<0).length;
+  const pendingOrders=(data.extraOrders||[]).filter(order=>
+   inSelectedMonth(order.date)&&!['INVOICED','PAID'].includes(String(order.status||'OPEN').toUpperCase())
+  ).length;
+
+  return {totalProfit,totalCosts,averageRate,profitable,watch,unprofitable,pendingOrders};
+ },[stats,data.extraOrders,selectedMonth]);
   const filteredCompanies=useMemo(()=>{return [...(data.companies||[])]
  .filter(c=>(c?.name||'').toLowerCase().includes(companySearch.toLowerCase()))
  .filter(c=>companyStatus==='ALL'||c.status===companyStatus)
@@ -748,7 +763,7 @@ async function deleteQuickNote(note){
  async function addUser(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());body.permissions=Object.fromEntries(modules.map(([k])=>[k,!!body['perm_'+k]]));modules.forEach(([k])=>delete body['perm_'+k]);await jsonFetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});formEl.reset();await load();alert('Użytkownik dodany.')}catch(err){alert(err.message)}}
  async function saveUser(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());body.permissions=Object.fromEntries(modules.map(([k])=>[k,!!body['perm_'+k]]));modules.forEach(([k])=>delete body['perm_'+k]);await jsonFetch('/api/users/'+editUser.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setEditUser(null);await load();alert('Użytkownik zapisany.')}catch(err){alert(err.message)}}
  async function deleteUser(u){if(!confirm(`Czy na pewno usunąć pracownika: ${u.name}?`))return;try{await jsonFetch('/api/users/'+u.id,{method:'DELETE'});if(editUser?.id===u.id)setEditUser(null);await load();alert('Pracownik usunięty.')}catch(err){alert(err.message)}}
- return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>(has(user,key)||(user.role==='WORKER'&&key==='export'))&&!(user.role==='WORKER'&&key==='extraOrders')&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
+ return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>has(user,key)&&!(user.role==='WORKER'&&key==='extraOrders')&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
  {tab==='dashboard'&&
   <div className="panel">
     <div className="row between">
@@ -766,10 +781,22 @@ async function deleteQuickNote(note){
     </div>
 
     <div className="kpis">
-      <div className="card">Firmy<h2>{stats.rows.length}</h2></div>
-      <div className="card">Godziny<h2>{minToText(stats.totalMin)}</h2></div>
-      <div className="card">Przychód<h2>{money(stats.totalIncome)}</h2></div>
-      <div className="card">Najbardziej rentowny<h2>{stats.best?.name||'-'}</h2></div>
+      <div className="card">Przychód w miesiącu<h2>{money(stats.totalIncome)}</h2></div>
+      <div className="card">Zysk po kosztach<h2>{money(adminKpis.totalProfit)}</h2></div>
+      <div className="card">Łączny czas pracy<h2>{minToText(stats.totalMin)}</h2></div>
+      <div className="card">Średnia stawka efektywna<h2>{money(adminKpis.averageRate)}/h</h2></div>
+      <div className="card">Firmy rentowne<h2>{adminKpis.profitable}</h2></div>
+      <div className="card">Firmy do obserwacji<h2>{adminKpis.watch}</h2></div>
+      <div className="card">Firmy nierentowne<h2>{adminKpis.unprofitable}</h2></div>
+      <div className="card">Zlecenia oczekujące na rozliczenie<h2>{adminKpis.pendingOrders}</h2></div>
+    </div>
+
+    <div className="card" style={{marginTop:16,marginBottom:16}}>
+      <div className="row between" style={{gap:18,flexWrap:'wrap'}}>
+       <div><span className="muted">Wszystkie firmy</span><h3 style={{margin:'4px 0 0'}}>{stats.rows.length}</h3></div>
+       <div><span className="muted">Łączne koszty</span><h3 style={{margin:'4px 0 0'}}>{money(adminKpis.totalCosts)}</h3></div>
+       <div><span className="muted">Najbardziej rentowna firma</span><h3 style={{margin:'4px 0 0'}}>{stats.best?.name||'-'}</h3></div>
+      </div>
     </div>
 
     <SummaryTable rows={stats.rows} selectedMonth={selectedMonth}/>
@@ -1016,21 +1043,21 @@ async function deleteQuickNote(note){
         />
       </label>
 
-      
+      <p className="muted" style={{marginTop:10}}>
+        Eksporty pobierają dane tylko z wybranego miesiąca: wpisy pracy, zlecenia dodatkowe, szkolenia i rentowność.
+      </p>
 
       <div className="row" style={{marginTop:16}}>
         <a className="btn orange" href={`/api/export/excel?month=${selectedMonth}`}>
-          {user.role==='ADMIN'?'Excel za miesiąc':'Mój Excel za miesiąc'}
+          Excel za miesiąc
         </a>
 
-        {user.role==='ADMIN'&&
-         <a className="btn" href={`/api/export/csv?month=${selectedMonth}`}>
+        <a className="btn" href={`/api/export/csv?month=${selectedMonth}`}>
           CSV za miesiąc
-         </a>
-        }
+        </a>
 
-        <a className="btn" href={`/api/export/pdf?month=${selectedMonth}`} target="_blank" rel="noreferrer">
-          {user.role==='ADMIN'?'PDF za miesiąc':'Mój PDF za miesiąc'}
+        <a className="btn" href={`/api/export/pdf?month=${selectedMonth}`} target="_blank">
+          PDF za miesiąc
         </a>
       </div>
     </div>
