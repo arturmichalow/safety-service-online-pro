@@ -10,6 +10,7 @@ function data(body) {
     description: body.description || null,
     netAmount: Number(body.netAmount || 0),
     travelCost: Number(body.travelCost || 0),
+    travelMinutes: Number(body.travelMinutes || 0),
     extraCost: Number(body.extraCost || 0),
     extraCostDescription: body.extraCostDescription || null,
     orderNumber: body.orderNumber || null,
