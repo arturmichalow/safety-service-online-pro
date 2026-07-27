@@ -160,3 +160,23 @@ tr.clickable:hover{background:#fff7ed}
     min-width:900px;
   }
 }
+
+/* Mapa firm */
+.company-map-card{background:#fff;border:1px solid #d8e0e8;border-radius:14px;padding:18px;box-shadow:0 8px 24px rgba(15,35,50,.07)}
+.company-map-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.company-map-head h2{margin:0 0 6px}
+.company-map-head p{margin:0;max-width:820px}
+.company-map-counter{background:#f4f7fa;border:1px solid #d8e0e8;border-radius:999px;padding:8px 12px;white-space:nowrap}
+.company-map-legend{display:flex;gap:14px;flex-wrap:wrap;margin:14px 0}
+.company-map-legend span{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:13px}
+.company-map-legend i{width:13px;height:13px;border-radius:50%;display:inline-block}
+.company-map{height:620px;min-height:420px;border:1px solid #cbd8e5;border-radius:12px;overflow:hidden;background:#eef3f6;z-index:1}
+.company-map-marker-wrap{background:transparent;border:0}
+.company-map-marker{display:block;width:20px;height:20px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.company-map-popup{font-family:Arial,sans-serif;line-height:1.45;min-width:235px}
+.company-map-popup strong{display:block;font-size:16px;margin-bottom:4px}
+.company-map-popup-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.company-map-popup-actions button,.company-map-popup-actions a{border:0;border-radius:7px;padding:7px 9px;text-decoration:none;font-weight:700;cursor:pointer;background:#ff5a14;color:#fff;font-size:12px}
+.company-map-popup-actions a{background:#132734}
+.company-map-empty{margin-top:12px;background:#f4f7fa;border-left:4px solid #7b8794;border-radius:8px;padding:12px}
+@media(max-width:800px){.company-map{height:480px}.company-map-card{padding:12px}}
