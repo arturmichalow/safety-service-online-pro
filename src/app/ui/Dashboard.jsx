@@ -16,6 +16,27 @@ function minutesToInput(minutes){
 }
 function money(v){return `${Number(v||0).toLocaleString('pl-PL')} zł`}
 function parseTime(s){s=String(s||'').toLowerCase().replace(',','.').trim();if(!s)return 0;if(s.includes(':')){const [h,m]=s.split(':');return Number(h)*60+Number(m||0)}const h=s.match(/(\d+(\.\d+)?)\s*h/),m=s.match(/(\d+)\s*m/);if(h||m)return Math.round(Number(h?.[1]||0)*60+Number(m?.[1]||0));return Math.round(Number(s||0)*60)}
+function getCompanyHealth(row){
+ const minutes=Number(row?.minutes||0);
+ const income=Number(row?.netTotal||0);
+ const costs=Number(row?.costs||0)+Number(row?.timeCost||0);
+ const profit=Number(row?.profit||0);
+ const rate=Number(row?.rate||0);
+
+ if(minutes<=0&&income<=0&&costs<=0){
+  return {key:'NO_DATA',label:'Brak danych',color:'#7b8794',background:'#f1f4f7'};
+ }
+ if(profit<0){
+  return {key:'UNPROFITABLE',label:'Nierentowna',color:'#d9343a',background:'#fff0f1'};
+ }
+ if(rate<150){
+  return {key:'AT_RISK',label:'Zagrożona',color:'#f07c00',background:'#fff4e8'};
+ }
+ if(rate<250||profit<3000){
+  return {key:'WATCH',label:'Do obserwacji',color:'#b88900',background:'#fff9df'};
+ }
+ return {key:'VERY_GOOD',label:'Bardzo dobra',color:'#159447',background:'#edf9f1'};
+}
 function splitMinutesBetweenCompanies(totalMinutes, companyCount) {
   const total = Number(totalMinutes || 0);
   const count = Number(companyCount || 0);
@@ -206,14 +227,26 @@ return {
   const totalCosts=rows.reduce((sum,row)=>sum+Number(row.costs||0)+Number(row.timeCost||0),0);
   const totalHours=Number(stats.totalMin||0)/60;
   const averageRate=totalHours>0?totalProfit/totalHours:0;
-  const profitable=rows.filter(row=>Number(row.profit||0)>0&&Number(row.rate||0)>=250).length;
-  const watch=rows.filter(row=>Number(row.profit||0)>0&&Number(row.rate||0)<250).length;
-  const unprofitable=rows.filter(row=>Number(row.profit||0)<0).length;
+  const healthCounts=rows.reduce((counts,row)=>{
+   const key=getCompanyHealth(row).key;
+   counts[key]=(counts[key]||0)+1;
+   return counts;
+  },{});
   const pendingOrders=(data.extraOrders||[]).filter(order=>
    inSelectedMonth(order.date)&&!['INVOICED','PAID'].includes(String(order.status||'OPEN').toUpperCase())
   ).length;
 
-  return {totalProfit,totalCosts,averageRate,profitable,watch,unprofitable,pendingOrders};
+  return {
+   totalProfit,
+   totalCosts,
+   averageRate,
+   profitable:Number(healthCounts.VERY_GOOD||0),
+   watch:Number(healthCounts.WATCH||0),
+   atRisk:Number(healthCounts.AT_RISK||0),
+   unprofitable:Number(healthCounts.UNPROFITABLE||0),
+   noData:Number(healthCounts.NO_DATA||0),
+   pendingOrders
+  };
  },[stats,data.extraOrders,selectedMonth]);
   const filteredCompanies=useMemo(()=>{return [...(data.companies||[])]
  .filter(c=>(c?.name||'').toLowerCase().includes(companySearch.toLowerCase()))
@@ -785,9 +818,11 @@ async function deleteQuickNote(note){
       <div className="card">Zysk po kosztach<h2>{money(adminKpis.totalProfit)}</h2></div>
       <div className="card">Łączny czas pracy<h2>{minToText(stats.totalMin)}</h2></div>
       <div className="card">Średnia stawka efektywna<h2>{money(adminKpis.averageRate)}/h</h2></div>
-      <div className="card">Firmy rentowne<h2>{adminKpis.profitable}</h2></div>
-      <div className="card">Firmy do obserwacji<h2>{adminKpis.watch}</h2></div>
-      <div className="card">Firmy nierentowne<h2>{adminKpis.unprofitable}</h2></div>
+      <div className="card" style={{borderLeft:'6px solid #159447'}}>Firmy bardzo dobre<h2>{adminKpis.profitable}</h2></div>
+      <div className="card" style={{borderLeft:'6px solid #b88900'}}>Firmy do obserwacji<h2>{adminKpis.watch}</h2></div>
+      <div className="card" style={{borderLeft:'6px solid #f07c00'}}>Firmy zagrożone<h2>{adminKpis.atRisk}</h2></div>
+      <div className="card" style={{borderLeft:'6px solid #d9343a'}}>Firmy nierentowne<h2>{adminKpis.unprofitable}</h2></div>
+      <div className="card" style={{borderLeft:'6px solid #7b8794'}}>Firmy bez danych<h2>{adminKpis.noData}</h2></div>
       <div className="card">Zlecenia oczekujące na rozliczenie<h2>{adminKpis.pendingOrders}</h2></div>
     </div>
 
@@ -797,6 +832,22 @@ async function deleteQuickNote(note){
        <div><span className="muted">Łączne koszty</span><h3 style={{margin:'4px 0 0'}}>{money(adminKpis.totalCosts)}</h3></div>
        <div><span className="muted">Najbardziej rentowna firma</span><h3 style={{margin:'4px 0 0'}}>{stats.best?.name||'-'}</h3></div>
       </div>
+    </div>
+
+    <div className="card" style={{marginBottom:16}}>
+     <h2 style={{marginTop:0}}>Ocena kondycji firm</h2>
+     <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+      {[
+       ['#159447','Bardzo dobra','zysk min. 3 000 zł i stawka min. 250 zł/h'],
+       ['#b88900','Do obserwacji','zysk dodatni, ale stawka poniżej 250 zł/h lub zysk poniżej 3 000 zł'],
+       ['#f07c00','Zagrożona','stawka efektywna poniżej 150 zł/h'],
+       ['#d9343a','Nierentowna','wynik finansowy poniżej 0 zł'],
+       ['#7b8794','Brak danych','brak czasu, przychodu i kosztów w wybranym miesiącu']
+      ].map(([color,label,description])=><div key={label} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:'1px solid #d8e0e8',borderRadius:10,background:'#fff'}}>
+       <span style={{width:12,height:12,borderRadius:'50%',background:color,flex:'0 0 auto'}}></span>
+       <span><b>{label}</b><span className="muted" style={{display:'block',fontSize:12}}>{description}</span></span>
+      </div>)}
+     </div>
     </div>
 
     <SummaryTable rows={stats.rows} selectedMonth={selectedMonth}/>
@@ -1429,6 +1480,7 @@ function SummaryTable({rows, selectedMonth}){
     <table>
      <thead>
       <tr>
+       <th>Ocena</th>
        <th onClick={()=>toggleSort('name')} style={{cursor:'pointer'}}>
         Firma {arrow('name')}
        </th>
@@ -1473,8 +1525,15 @@ function SummaryTable({rows, selectedMonth}){
      </thead>
 
      <tbody>
-      {sortedRows.map(r=>
-       <tr key={r.id}>
+      {sortedRows.map(r=>{
+       const health=getCompanyHealth(r);
+       return <tr key={r.id} style={{background:health.background}}>
+        <td>
+         <span style={{display:'inline-flex',alignItems:'center',gap:7,padding:'5px 9px',borderRadius:999,border:`1px solid ${health.color}`,color:health.color,background:'#fff',fontWeight:800,whiteSpace:'nowrap'}}>
+          <span style={{width:9,height:9,borderRadius:'50%',background:health.color}}></span>
+          {health.label}
+         </span>
+        </td>
         <td>
          <span className={'status '+r.status}></span>
          {r.name}
@@ -1499,7 +1558,7 @@ function SummaryTable({rows, selectedMonth}){
   </button>
 </td>
        </tr>
-      )}
+      })}
      </tbody>
     </table>
    </div>
