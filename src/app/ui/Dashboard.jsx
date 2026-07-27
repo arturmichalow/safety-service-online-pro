@@ -1462,8 +1462,8 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
    String(row.name||'').toLowerCase().includes(search.toLowerCase());
  }),[rows,healthFilter,workerFilter,billingFilter,search]);
 
- const best=[...rows].filter(row=>Number(row.netTotal||0)||Number(row.minutes||0)).sort((a,b)=>b.profit-a.profit).slice(0,5);
- const weakest=[...rows].filter(row=>Number(row.netTotal||0)||Number(row.minutes||0)).sort((a,b)=>a.profit-b.profit).slice(0,5);
+ const best=[...rows].filter(row=>Number(row.netTotal||0)||Number(row.minutes||0)).sort((a,b)=>b.profit-a.profit).slice(0,10);
+ const weakest=[...rows].filter(row=>Number(row.netTotal||0)||Number(row.minutes||0)).sort((a,b)=>a.profit-b.profit).slice(0,10);
  const comparison=[
   {name:'Przychód',poprzedni:incomePrevious,bieżący:rows.reduce((s,r)=>s+Number(r.netTotal||0),0)},
   {name:'Zysk',poprzedni:totalPrevious,bieżący:rows.reduce((s,r)=>s+Number(r.profit||0),0)},
@@ -1487,17 +1487,28 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
    <div className="card">Zysk po kosztach<h2>{money(adminKpis.totalProfit)}</h2><small>{percentChange(adminKpis.totalProfit,totalPrevious).toFixed(1)}% m/m</small></div>
    <div className="card">Łączny czas<h2>{minToText(rows.reduce((s,r)=>s+Number(r.minutes||0),0))}</h2><small>{percentChange(rows.reduce((s,r)=>s+Number(r.minutes||0),0),minutesPrevious).toFixed(1)}% m/m</small></div>
    <div className="card">Średnia stawka<h2>{Number(adminKpis.averageRate||0).toFixed(2)} zł/h</h2><small>{percentChange(adminKpis.averageRate,ratePrevious).toFixed(1)}% m/m</small></div>
-   <button type="button" className="card" onClick={()=>setHealthFilter('VERY_GOOD')} style={{textAlign:'left',borderLeft:'6px solid #159447'}}>Bardzo dobre<h2>{adminKpis.profitable}</h2></button>
-   <button type="button" className="card" onClick={()=>setHealthFilter('WATCH')} style={{textAlign:'left',borderLeft:'6px solid #b88900'}}>Do obserwacji<h2>{adminKpis.watch}</h2></button>
-   <button type="button" className="card" onClick={()=>setHealthFilter('AT_RISK')} style={{textAlign:'left',borderLeft:'6px solid #f07c00'}}>Zagrożone<h2>{adminKpis.atRisk}</h2></button>
-   <button type="button" className="card" onClick={()=>setHealthFilter('UNPROFITABLE')} style={{textAlign:'left',borderLeft:'6px solid #d9343a'}}>Nierentowne<h2>{adminKpis.unprofitable}</h2></button>
+   <button type="button" className="card" onClick={()=>setHealthFilter('VERY_GOOD')} title="Kliknij, aby wyświetlić w tabeli tylko firmy bardzo dobre" aria-label="Pokaż tylko firmy bardzo dobre" style={{textAlign:'left',borderLeft:'6px solid #159447',cursor:'pointer'}}><b>Bardzo dobre</b><h2>{adminKpis.profitable}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać tylko firmy bardzo dobre.</small></button>
+   <button type="button" className="card" onClick={()=>setHealthFilter('WATCH')} title="Kliknij, aby wyświetlić w tabeli firmy do obserwacji" aria-label="Pokaż firmy do obserwacji" style={{textAlign:'left',borderLeft:'6px solid #b88900',cursor:'pointer'}}><b>Do obserwacji</b><h2>{adminKpis.watch}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać firmy wymagające obserwacji.</small></button>
+   <button type="button" className="card" onClick={()=>setHealthFilter('AT_RISK')} title="Kliknij, aby wyświetlić w tabeli tylko firmy zagrożone" aria-label="Pokaż tylko firmy zagrożone" style={{textAlign:'left',borderLeft:'6px solid #f07c00',cursor:'pointer'}}><b>Zagrożone</b><h2>{adminKpis.atRisk}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać firmy o niskiej stawce efektywnej.</small></button>
+   <button type="button" className="card" onClick={()=>setHealthFilter('UNPROFITABLE')} title="Kliknij, aby wyświetlić w tabeli tylko firmy nierentowne" aria-label="Pokaż tylko firmy nierentowne" style={{textAlign:'left',borderLeft:'6px solid #d9343a',cursor:'pointer'}}><b>Nierentowne</b><h2>{adminKpis.unprofitable}</h2><small>Kliknij, aby przefiltrować tabelę i pokazać firmy generujące stratę.</small></button>
   </div>
 
-  <div className="card" style={{marginTop:16}}><h2>Wymagają uwagi</h2>{alerts.length===0?<p className="muted">Brak istotnych alertów.</p>:<div style={{display:'grid',gap:8}}>{alerts.map((alert,index)=><div key={index} className={alert.level==='danger'?'warnBox':'infoBox'} style={{borderLeft:`5px solid ${alert.level==='danger'?'#d9343a':alert.level==='warning'?'#f07c00':'#7b8794'}`}}>{alert.text}</div>)}</div>}</div>
-
-  <div className="grid" style={{marginTop:16}}>
-   <div className="card"><h2>Najlepsze firmy</h2>{best.map((row,index)=><div key={row.id||row.name} className="row between" style={{padding:'8px 0',borderBottom:'1px solid #e6ebf0'}}><span>{index+1}. <b>{row.name}</b></span><span>{money(row.profit)}</span></div>)}</div>
-   <div className="card"><h2>Najsłabsze firmy</h2>{weakest.map((row,index)=><div key={row.id||row.name} className="row between" style={{padding:'8px 0',borderBottom:'1px solid #e6ebf0'}}><span>{index+1}. <b>{row.name}</b></span><span>{money(row.profit)} / {Number(row.rate||0).toFixed(2)} zł/h</span></div>)}</div>
+  <div style={{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:16,marginTop:16,alignItems:'stretch'}}>
+   <div className="card" style={{margin:0,minWidth:0,height:'100%'}}>
+    <h2>Wymagają uwagi</h2>
+    <p className="muted" style={{marginTop:-4}}>Najważniejsze alerty dla wybranego miesiąca.</p>
+    {alerts.length===0?<p className="muted">Brak istotnych alertów.</p>:<div style={{display:'grid',gap:8,maxHeight:420,overflowY:'auto',paddingRight:4}}>{alerts.map((alert,index)=><div key={index} className={alert.level==='danger'?'warnBox':'infoBox'} style={{borderLeft:`5px solid ${alert.level==='danger'?'#d9343a':alert.level==='warning'?'#f07c00':'#7b8794'}`}}>{alert.text}</div>)}</div>}
+   </div>
+   <div className="card" style={{margin:0,minWidth:0,height:'100%'}}>
+    <h2>10 najlepszych firm</h2>
+    <p className="muted" style={{marginTop:-4}}>Ranking według najwyższego zysku po kosztach.</p>
+    {best.map((row,index)=><div key={row.id||row.name} className="row between" style={{padding:'8px 0',borderBottom:'1px solid #e6ebf0',gap:12}}><span style={{minWidth:0}}>{index+1}. <b>{row.name}</b></span><span style={{whiteSpace:'nowrap'}}>{money(row.profit)}</span></div>)}
+   </div>
+   <div className="card" style={{margin:0,minWidth:0,height:'100%'}}>
+    <h2>10 najsłabszych firm</h2>
+    <p className="muted" style={{marginTop:-4}}>Ranking według najniższego zysku po kosztach.</p>
+    {weakest.map((row,index)=><div key={row.id||row.name} className="row between" style={{padding:'8px 0',borderBottom:'1px solid #e6ebf0',gap:12}}><span style={{minWidth:0}}>{index+1}. <b>{row.name}</b></span><span style={{whiteSpace:'nowrap',textAlign:'right'}}>{money(row.profit)}<br/><small>{Number(row.rate||0).toFixed(2)} zł/h</small></span></div>)}
+   </div>
   </div>
 
   <div className="card" style={{marginTop:16}}><h2>Porównanie z poprzednim miesiącem ({previousMonth})</h2><div style={{height:280}}><ResponsiveContainer width="100%" height="100%"><BarChart data={comparison}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip formatter={value=>money(value)}/><Legend/><Bar dataKey="poprzedni" name="Poprzedni miesiąc" fill="#7b8794"/><Bar dataKey="bieżący" name="Bieżący miesiąc" fill="#ff5a14"/></BarChart></ResponsiveContainer></div></div>
