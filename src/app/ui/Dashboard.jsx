@@ -748,7 +748,7 @@ async function deleteQuickNote(note){
  async function addUser(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());body.permissions=Object.fromEntries(modules.map(([k])=>[k,!!body['perm_'+k]]));modules.forEach(([k])=>delete body['perm_'+k]);await jsonFetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});formEl.reset();await load();alert('Użytkownik dodany.')}catch(err){alert(err.message)}}
  async function saveUser(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());body.permissions=Object.fromEntries(modules.map(([k])=>[k,!!body['perm_'+k]]));modules.forEach(([k])=>delete body['perm_'+k]);await jsonFetch('/api/users/'+editUser.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setEditUser(null);await load();alert('Użytkownik zapisany.')}catch(err){alert(err.message)}}
  async function deleteUser(u){if(!confirm(`Czy na pewno usunąć pracownika: ${u.name}?`))return;try{await jsonFetch('/api/users/'+u.id,{method:'DELETE'});if(editUser?.id===u.id)setEditUser(null);await load();alert('Pracownik usunięty.')}catch(err){alert(err.message)}}
- return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>has(user,key)&&!(user.role==='WORKER'&&key==='extraOrders')&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
+ return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>(has(user,key)||(user.role==='WORKER'&&key==='export'))&&!(user.role==='WORKER'&&key==='extraOrders')&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
  {tab==='dashboard'&&
   <div className="panel">
     <div className="row between">
@@ -1017,20 +1017,24 @@ async function deleteQuickNote(note){
       </label>
 
       <p className="muted" style={{marginTop:10}}>
-        Eksporty pobierają dane tylko z wybranego miesiąca: wpisy pracy, zlecenia dodatkowe, szkolenia i rentowność.
+        {user.role==='ADMIN'
+          ? 'Eksport obejmuje dane wszystkich pracowników, firm, zleceń, szkoleń i rentowności z wybranego miesiąca.'
+          : 'Eksport obejmuje wyłącznie Twoje własne wpisy pracy z wybranego miesiąca. Dane innych pracowników i dane finansowe firm nie są udostępniane.'}
       </p>
 
       <div className="row" style={{marginTop:16}}>
         <a className="btn orange" href={`/api/export/excel?month=${selectedMonth}`}>
-          Excel za miesiąc
+          {user.role==='ADMIN'?'Excel za miesiąc':'Mój Excel za miesiąc'}
         </a>
 
-        <a className="btn" href={`/api/export/csv?month=${selectedMonth}`}>
+        {user.role==='ADMIN'&&
+         <a className="btn" href={`/api/export/csv?month=${selectedMonth}`}>
           CSV za miesiąc
-        </a>
+         </a>
+        }
 
-        <a className="btn" href={`/api/export/pdf?month=${selectedMonth}`} target="_blank">
-          PDF za miesiąc
+        <a className="btn" href={`/api/export/pdf?month=${selectedMonth}`} target="_blank" rel="noreferrer">
+          {user.role==='ADMIN'?'PDF za miesiąc':'Mój PDF za miesiąc'}
         </a>
       </div>
     </div>
