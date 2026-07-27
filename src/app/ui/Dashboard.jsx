@@ -4,7 +4,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContai
 import jsPDF from 'jspdf';
 import CompanyMap from './CompanyMap';
 
-const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
+const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['missingReport','Raport braków'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
 const workTypes=['dokumentacja','audyt','szkolenie','dojazd','email','telefon','inne'];
 const orderTypes=['szkolenie','audyt','ratownik','pomiary oświetlenia','dokumentacja','konsultacje','wypadek','inne'];
 function minToText(m){const h=Math.floor((m||0)/60),mm=(m||0)%60;return `${h}h ${mm}m`}
@@ -55,7 +55,7 @@ function splitMinutesBetweenCompanies(totalMinutes, companyCount) {
 }
 function getShopMargin(o){const m=String(o.description||'').match(/\[MARZA_SKLEP:([^\]]+)\]/);return m?Number(String(m[1]).replace(',','.').replace(/[^0-9.-]/g,'')):Number(o.netAmount||0)}
 function cleanShopDescription(o){return String(o.description||'').replace(/\s*\[MARZA_SKLEP:[^\]]+\]\s*/,'').trim()}
-function has(user,key){return user.role==='ADMIN'||user.permissions?.[key]}
+function has(user,key){return user.role==='ADMIN'||key==='missingReport'||user.permissions?.[key]}
 async function jsonFetch(url,opts){const r=await fetch(url,opts);let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'Błąd zapisu');return j}
 async function nipLookup(nip){const clean=String(nip||'').replace(/\D/g,'');if(clean.length!==10)return null;const r=await fetch('/api/nip/'+clean,{cache:'no-store'});const j=await r.json();return r.ok&&j?.name?j:null}
 async function autofillByNip(formEl){try{const nip=formEl?.elements?.nip?.value;if(!nip)return;const d=await nipLookup(nip);if(!d)return;const hasEmpty=['name','address','contactPerson','phone','email'].some(k=>formEl.elements[k]&&!formEl.elements[k].value);if(!hasEmpty)return;if(formEl.elements.name&&!formEl.elements.name.value)formEl.elements.name.value=d.name||'';if(formEl.elements.address&&!formEl.elements.address.value)formEl.elements.address.value=d.address||'';if(formEl.elements.nip&&!formEl.elements.nip.value)formEl.elements.nip.value=d.nip||'';}catch(e){console.warn(e)}}
@@ -70,7 +70,7 @@ function inSelectedMonth(date){
   return String(date || '').slice(0,7) === selectedMonth;
 }
  const [tab,setTab]=useState(user.role==='WORKER'?'work':'dashboard');
- const [data,setData]=useState({companies:[],workEntries:[],extraOrders:[],users:[]});
+ const [data,setData]=useState({companies:[],workEntries:[],extraOrders:[],absences:[],users:[]});
  const [summarySort,setSummarySort]=useState({
   key:'profit',
   direction:'desc'
@@ -770,7 +770,7 @@ async function deleteQuickNote(note){
  async function addUser(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());body.permissions=Object.fromEntries(modules.map(([k])=>[k,!!body['perm_'+k]]));modules.forEach(([k])=>delete body['perm_'+k]);await jsonFetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});formEl.reset();await load();alert('Użytkownik dodany.')}catch(err){alert(err.message)}}
  async function saveUser(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());body.permissions=Object.fromEntries(modules.map(([k])=>[k,!!body['perm_'+k]]));modules.forEach(([k])=>delete body['perm_'+k]);await jsonFetch('/api/users/'+editUser.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setEditUser(null);await load();alert('Użytkownik zapisany.')}catch(err){alert(err.message)}}
  async function deleteUser(u){if(!confirm(`Czy na pewno usunąć pracownika: ${u.name}?`))return;try{await jsonFetch('/api/users/'+u.id,{method:'DELETE'});if(editUser?.id===u.id)setEditUser(null);await load();alert('Pracownik usunięty.')}catch(err){alert(err.message)}}
- return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>has(user,key)&&!(user.role==='WORKER'&&key==='extraOrders')&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
+ return <div className="app"><aside className="sidebar"><div style={{textAlign:'right'}}>«</div><div className="side-title">Nawigacja</div><div className="userline">Użytkownik: <b>{user.name}</b></div><div className="userline">Rola: <b>{user.role==='ADMIN'?'Administrator':'Pracownik'}</b></div>{modules.map(([key,label])=>has(user,key)&&!(user.role==='WORKER'&&key==='extraOrders')&&!(user.role==='ADMIN'&&key==='missingReport')&&<button key={key} className={'navbtn '+(tab===key?'active':'')} onClick={()=>{setTab(key);setEditUser(null)}}>{label}</button>)}<a href="/logout" className="navbtn">Wyloguj</a></aside><main className="main"><header className="top"><img src="/logo_white.png" className="logo" alt="Safety Service"/><div className="title">SAFETY SERVICE — PANEL ROZLICZEŃ</div><a className="btn" href="/logout">Wyloguj</a></header><div className="content">
  {tab==='dashboard'&&
   <AdminOverview
    rows={stats.rows}
@@ -782,7 +782,7 @@ async function deleteQuickNote(note){
 }
  {tab==='clients'&&<div className="panel"><div className="grid"><form className="card" onSubmit={saveCompany}><h2>Dodaj firmę</h2><input name="name" placeholder="Nazwa firmy" required/><input name="nip" placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/><input name="address" placeholder="Adres"/><input name="contactPerson" placeholder="Osoba kontaktowa"/><input name="phone" placeholder="Telefon"/><input name="email" placeholder="Email"/><input name="serviceType" placeholder="Typ obsługi"/><select name="assignedUserId"><option value="">Przypisz pracownika</option>{data.users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><select name="status"><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select><select name="billingType"><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select><input name="netAmount" type="number" placeholder="Kwota netto miesięcznie"/><input name="travelCost" type="number" placeholder="Koszt dojazdów"/><input name="extraCost" type="number" placeholder="Dodatkowe koszty"/><input name="extraCostDescription" placeholder="Opis dodatkowych kosztów / uwagi"/><input name="latitude" type="number" step="any" placeholder="Szerokość geograficzna, np. 50.033"/><input name="longitude" type="number" step="any" placeholder="Długość geograficzna, np. 20.217"/><button className="orange">Zapisz</button></form><div className="card"><h2>Baza firm</h2><div className="filterBar"><input placeholder="Szukaj firmy..." value={companySearch} onChange={e=>setCompanySearch(e.target.value)}/><select value={companySort} onChange={e=>setCompanySort(e.target.value)}><option value="name_asc">Nazwa A-Z</option><option value="name_desc">Nazwa Z-A</option><option value="money_desc">Największa kwota</option><option value="money_asc">Najmniejsza kwota</option></select><select value={companyStatus} onChange={e=>setCompanyStatus(e.target.value)}><option value="ALL">Wszystkie statusy</option><option value="ACTIVE">Aktywne</option><option value="PAUSED">Zawieszone</option><option value="INACTIVE">Nieaktywne</option></select></div><div className="muted">Widoczne firmy: {filteredCompanies.length} / {data.companies.length}</div><div className="tableWrap"><table><thead><tr><th>Status</th><th>Firma</th><th>NIP</th><th>Pracownik</th><th>Kwota miesięczna</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{filteredCompanies.map(c=><tr className="clickable" key={c.id} onClick={()=>setSelectedCompany(c)}><td><span className={'status '+c.status}></span></td><td>{c.name}</td><td>{c.nip||'-'}</td><td>{c.assignedUser?.name||'-'}</td><td>{money(c.netAmount)}</td><td>{c.extraCostDescription||'-'}</td><td><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();setSelectedCompany(c)}}>✏️</button><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();deleteCompany(c)}}>🗑️</button></td></tr>)}</tbody></table></div>{selectedCompany&&<CompanyDetails key={selectedCompany.id} company={selectedCompany} users={data.users} orders={data.extraOrders.filter(o=>o.companyId===selectedCompany.id)} onSubmit={updateCompany} onDelete={()=>deleteCompany(selectedCompany)}/>}</div></div></div>}
  {tab==='employees'&&<div className="panel"><h1>Baza pracowników</h1><div className="employeeGrid">{data.users.map(u=><EmployeeCard key={u.id} u={u} onEdit={()=>{setTab('users');setEditUser(u)}} onDelete={()=>deleteUser(u)}/>)}</div></div>}
- {tab==='workerStats'&&<WorkerStatsPanel data={data}/>}
+ {tab==='workerStats'&&<WorkerStatsPanel data={data} reload={load}/>}
   {tab==='work'&&
   <div className="panel">
    <div className="card" style={{maxWidth:900}}>
@@ -1001,8 +1001,10 @@ async function deleteQuickNote(note){
      {myDayEntries.map(entry=><tr key={`${entry.entryKind}-${entry.id}`}><td>{workEntryCompanyName(entry)}</td><td>{entry.entryKind==='EXTRA'?<><span className="pill">Zlecenie dodatkowe</span><br/>{entry.type||'-'}</>:entry.type||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{minToText(Number(entry.minutes||0))}</td><td>{Number(entry.travelMinutes||0)>0?minToText(Number(entry.travelMinutes||0)):'-'}</td><td>{entry.orderNumber||'-'}</td><td><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="light" onClick={()=>startEditEntry(entry)}>Edytuj</button><button type="button" className="red" onClick={()=>entry.entryKind==='EXTRA'?deleteExtraOrder(entry):deleteWorkEntry(entry)}>Usuń</button></div></td></tr>)}
     </tbody></table></div>}
    </div>
+   <WorkerMissingAlert data={data} user={user} onOpen={()=>setTab('missingReport')}/>
   </div>
  }
+ {tab==='missingReport'&&<MissingReportPanel data={data} user={user} reload={load}/>}
  {tab==='extraOrders'&&<ExtraOrdersPanel data={data} order={order} setOrder={setOrder} addExtraOrder={addExtraOrder} deleteExtraOrder={deleteExtraOrder}/>} 
  {tab==='shopOrders'&&<ShopOrdersPanel data={data} shopOrder={shopOrder} setShopOrder={setShopOrder} addShopOrder={addShopOrder} deleteExtraOrder={deleteExtraOrder}/>} 
 {tab==='ai'&&<div className="panel">
@@ -1851,325 +1853,70 @@ function ShopOrdersPanel({data,shopOrder,setShopOrder,addShopOrder,deleteExtraOr
 }
 
 
-function WorkerStatsPanel({ data }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const currentMonth = today.slice(0, 7);
-  const [workerFilter, setWorkerFilter] = useState('ALL');
-  const [companyFilter, setCompanyFilter] = useState('ALL');
-  const [monthFilter, setMonthFilter] = useState(currentMonth);
-  const [dateFrom, setDateFrom] = useState(`${currentMonth}-01`);
-  const [dateTo, setDateTo] = useState(() => {
-    const [year, month] = currentMonth.split('-').map(Number);
-    const lastDay = new Date(year, month, 0).getDate();
-    return `${currentMonth}-${String(lastDay).padStart(2, '0')}`;
-  });
-  const [editEntry, setEditEntry] = useState(null);
-
-  const companyName = (id) =>
-    data.companies.find(c => c.id === id)?.name || 'Firma spoza listy';
-
-  const workerName = (entry) =>
-    entry.user?.name ||
-    entry.userName ||
-    data.users.find(u => u.id === entry.userId)?.name ||
-    data.users.find(u => u.id === entry.createdById)?.name ||
-    entry.createdBy?.name ||
-    'Nieznany pracownik';
-
-  const allEntries = useMemo(() => {
-    return (data.workEntries || []).map(e => ({
-      ...e,
-      worker: workerName(e),
-      company: companyName(e.companyId),
-      dateText: String(e.date || '').slice(0, 10)
-    }));
-  }, [data.workEntries, data.companies, data.users]);
-
-  const workers = useMemo(() => {
-    const names = [
-      ...(data.users || []).filter(u => u.active !== false).map(u => u.name),
-      ...allEntries.map(e => e.worker)
-    ].filter(Boolean);
-    return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'pl'));
-  }, [data.users, allEntries]);
-
-  const entries = useMemo(() => {
-    return allEntries
-      .filter(e => !dateFrom || e.dateText >= dateFrom)
-      .filter(e => !dateTo || e.dateText <= dateTo)
-      .filter(e => workerFilter === 'ALL' || e.worker === workerFilter)
-      .filter(e => companyFilter === 'ALL' || e.companyId === companyFilter)
-      .sort((a, b) =>
-        new Date(b.date) - new Date(a.date) ||
-        a.worker.localeCompare(b.worker, 'pl') ||
-        a.company.localeCompare(b.company, 'pl')
-      );
-  }, [allEntries, dateFrom, dateTo, workerFilter, companyFilter]);
-
-  function setMonthRange(value) {
-    setMonthFilter(value);
-    if (!value) return;
-    const [year, month] = value.split('-').map(Number);
-    const lastDay = new Date(year, month, 0).getDate();
-    setDateFrom(`${value}-01`);
-    setDateTo(`${value}-${String(lastDay).padStart(2, '0')}`);
-  }
-
-  function localDate(iso) {
-    const [year, month, day] = String(iso).split('-').map(Number);
-    return new Date(year, month - 1, day, 12, 0, 0);
-  }
-
-  function businessDates(from, to) {
-    if (!from || !to || from > to) return [];
-    const effectiveTo = to > today ? today : to;
-    if (from > effectiveTo) return [];
-    const result = [];
-    const cursor = localDate(from);
-    const end = localDate(effectiveTo);
-    while (cursor <= end) {
-      const day = cursor.getDay();
-      if (day !== 0 && day !== 6) result.push(cursor.toISOString().slice(0, 10));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    return result;
-  }
-
-  const selectedWorkerEntries = useMemo(
-    () => entries.filter(e => workerFilter === 'ALL' || e.worker === workerFilter),
-    [entries, workerFilter]
-  );
-
-  const workMinutes = selectedWorkerEntries.reduce((s, r) => s + Number(r.minutes || 0), 0);
-  const travelMinutes = selectedWorkerEntries.reduce((s, r) => s + Number(r.travelMinutes || 0), 0);
-  const totalMinutes = workMinutes + travelMinutes;
-  const totalEntries = selectedWorkerEntries.length;
-  const totalExtraCosts = selectedWorkerEntries.reduce((s, r) => s + Number(r.additionalCost || 0), 0);
-  const uniqueCompanies = new Set(selectedWorkerEntries.map(r => r.companyId || r.company)).size;
-
-  const expectedDates = useMemo(() => businessDates(dateFrom, dateTo), [dateFrom, dateTo, today]);
-
-  const dailyRows = useMemo(() => {
-    if (workerFilter === 'ALL') return [];
-    const grouped = new Map();
-    selectedWorkerEntries.forEach(entry => {
-      const current = grouped.get(entry.dateText) || { work: 0, travel: 0, entries: 0, companies: new Set() };
-      current.work += Number(entry.minutes || 0);
-      current.travel += Number(entry.travelMinutes || 0);
-      current.entries += 1;
-      current.companies.add(entry.company);
-      grouped.set(entry.dateText, current);
-    });
-
-    return expectedDates.map(date => {
-      const row = grouped.get(date) || { work: 0, travel: 0, entries: 0, companies: new Set() };
-      const total = row.work + row.travel;
-      const missing = Math.max(0, 480 - total);
-      return {
-        date,
-        work: row.work,
-        travel: row.travel,
-        total,
-        missing,
-        entries: row.entries,
-        companies: [...row.companies].join(', ') || '-',
-        status: total >= 480 ? 'OK' : total === 0 ? 'BRAK_WPISU' : 'BRAKUJE'
-      };
-    }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [workerFilter, selectedWorkerEntries, expectedDates]);
-
-  const requiredMinutes = workerFilter === 'ALL' ? 0 : expectedDates.length * 480;
-  const missingMinutes = workerFilter === 'ALL' ? 0 : dailyRows.reduce((s, r) => s + r.missing, 0);
-  const daysBelowNorm = dailyRows.filter(r => r.total > 0 && r.total < 480).length;
-  const daysWithoutEntries = dailyRows.filter(r => r.total === 0).length;
-  const daysAtNorm = dailyRows.filter(r => r.total >= 480).length;
-
-  const companySummary = useMemo(() => {
-    const map = new Map();
-    selectedWorkerEntries.forEach(entry => {
-      const key = entry.company;
-      const current = map.get(key) || { company: key, work: 0, travel: 0, entries: 0 };
-      current.work += Number(entry.minutes || 0);
-      current.travel += Number(entry.travelMinutes || 0);
-      current.entries += 1;
-      map.set(key, current);
-    });
-    return [...map.values()].sort((a, b) => (b.work + b.travel) - (a.work + a.travel));
-  }, [selectedWorkerEntries]);
-
-  const activitySummary = useMemo(() => {
-    const map = new Map();
-    selectedWorkerEntries.forEach(entry => {
-      const key = entry.type || 'inne';
-      const current = map.get(key) || { type: key, minutes: 0, entries: 0 };
-      current.minutes += Number(entry.minutes || 0);
-      current.entries += 1;
-      map.set(key, current);
-    });
-    return [...map.values()].sort((a, b) => b.minutes - a.minutes);
-  }, [selectedWorkerEntries]);
-
-  async function deleteEntry(entry) {
-    if (!confirm(`Usunąć wpis pracy: ${entry.worker} / ${entry.company}?`)) return;
-    try {
-      await jsonFetch('/api/work/' + entry.id, { method: 'DELETE' });
-      alert('Wpis usunięty.');
-      location.reload();
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
-  async function saveEntry(e) {
-    e.preventDefault();
-    try {
-      const form = e.currentTarget;
-      const body = {
-        date: form.date.value,
-        companyId: form.companyId.value,
-        orderNumber: form.orderNumber.value,
-        type: form.type.value,
-        title: form.description.value || form.type.value,
-        description: form.description.value,
-        minutes: parseTime(form.time.value),
-        travelMinutes: parseTime(form.travelTime.value),
-        additionalCost: Number(form.additionalCost.value || 0),
-        additionalCostDescription: form.additionalCostDescription.value
-      };
-
-      await jsonFetch('/api/work/' + editEntry.id, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      alert('Wpis zapisany.');
-      setEditEntry(null);
-      location.reload();
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
-  return (
-    <div className="panel">
-      <h1>Pracownicy</h1>
-
-      <div className="card" style={{marginBottom:16}}>
-        <h2 style={{marginTop:0}}>Zakres analizy</h2>
-        <div className="grid2">
-          <Field label="Pracownik">
-            <select value={workerFilter} onChange={e => setWorkerFilter(e.target.value)}>
-              <option value="ALL">Wszyscy pracownicy</option>
-              {workers.map(w => <option key={w} value={w}>{w}</option>)}
-            </select>
-          </Field>
-          <Field label="Miesiąc — szybki wybór">
-            <input type="month" value={monthFilter} onChange={e => setMonthRange(e.target.value)} />
-          </Field>
-          <Field label="Data od">
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          </Field>
-          <Field label="Data do">
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </Field>
-          <Field label="Firma">
-            <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)}>
-              <option value="ALL">Wszystkie firmy</option>
-              {data.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </Field>
-        </div>
-        <p className="muted" style={{marginBottom:0}}>
-          Norma jest liczona jako 8 godzin dziennie od poniedziałku do piątku. Dni przyszłe nie są wykazywane jako braki.
-        </p>
-      </div>
-
-      <div className="kpis">
-        <div className="card">{workerFilter === 'ALL' ? 'Pracownicy' : 'Wybrany pracownik'}<h2>{workerFilter === 'ALL' ? workers.length : workerFilter}</h2></div>
-        <div className="card">Czas pracy<h2>{minToText(workMinutes)}</h2></div>
-        <div className="card">Czas dojazdów<h2>{minToText(travelMinutes)}</h2></div>
-        <div className="card">Praca + dojazdy<h2>{minToText(totalMinutes)}</h2></div>
-        <div className="card">Firmy<h2>{uniqueCompanies}</h2></div>
-        <div className="card">Liczba wpisów<h2>{totalEntries}</h2></div>
-        {workerFilter !== 'ALL' && <>
-          <div className="card">Dni robocze<h2>{expectedDates.length}</h2></div>
-          <div className="card">Wymagany czas<h2>{minToText(requiredMinutes)}</h2></div>
-          <div className="card" style={{borderLeft:'4px solid #f04444'}}>Brakujący czas<h2>{minToText(missingMinutes)}</h2></div>
-          <div className="card" style={{borderLeft:'4px solid #ff8a00'}}>Dni poniżej 8 h<h2>{daysBelowNorm}</h2></div>
-          <div className="card" style={{borderLeft:'4px solid #f04444'}}>Dni bez wpisu<h2>{daysWithoutEntries}</h2></div>
-          <div className="card" style={{borderLeft:'4px solid #20b15a'}}>Dni z normą<h2>{daysAtNorm}</h2></div>
-        </>}
-      </div>
-
-      {workerFilter !== 'ALL' && <div className="card" style={{marginTop:16}}>
-        <h2>Realizacja czasu pracy — {workerFilter}</h2>
-        <div className="tableWrap">
-          <table>
-            <thead><tr><th>Data</th><th>Firmy</th><th>Wpisy</th><th>Praca</th><th>Dojazd</th><th>Łącznie</th><th>Norma</th><th>Brakuje</th><th>Status</th></tr></thead>
-            <tbody>
-              {dailyRows.map(row => <tr key={row.date} style={{background:row.status==='BRAK_WPISU'?'#fff0f0':row.status==='BRAKUJE'?'#fff8e8':'#effaf3'}}>
-                <td>{row.date}</td><td>{row.companies}</td><td>{row.entries}</td><td>{minToText(row.work)}</td><td>{minToText(row.travel)}</td><td><b>{minToText(row.total)}</b></td><td>8h 0m</td><td>{row.missing ? minToText(row.missing) : '-'}</td>
-                <td><b>{row.status==='OK'?'✅ OK':row.status==='BRAK_WPISU'?'🔴 Brak wpisu':'⚠️ Poniżej 8 h'}</b></td>
-              </tr>)}
-            </tbody>
-          </table>
-        </div>
-      </div>}
-
-      {workerFilter !== 'ALL' && <div className="grid" style={{marginTop:16}}>
-        <div className="card">
-          <h2>Czas według firm</h2>
-          <div className="tableWrap"><table><thead><tr><th>Firma</th><th>Praca</th><th>Dojazd</th><th>Łącznie</th><th>Wpisy</th><th>Udział</th></tr></thead><tbody>
-            {companySummary.map(row => {
-              const combined = row.work + row.travel;
-              const share = totalMinutes ? (combined / totalMinutes) * 100 : 0;
-              return <tr key={row.company}><td>{row.company}</td><td>{minToText(row.work)}</td><td>{minToText(row.travel)}</td><td><b>{minToText(combined)}</b></td><td>{row.entries}</td><td>{share.toFixed(1)}%</td></tr>;
-            })}
-          </tbody></table></div>
-        </div>
-        <div className="card">
-          <h2>Czas według czynności</h2>
-          <div className="tableWrap"><table><thead><tr><th>Czynność</th><th>Czas</th><th>Wpisy</th><th>Udział pracy</th></tr></thead><tbody>
-            {activitySummary.map(row => <tr key={row.type}><td>{row.type}</td><td><b>{minToText(row.minutes)}</b></td><td>{row.entries}</td><td>{workMinutes ? ((row.minutes / workMinutes) * 100).toFixed(1) : '0.0'}%</td></tr>)}
-          </tbody></table></div>
-        </div>
-      </div>}
-
-      <div className="card" style={{marginTop:16}}>
-        <h2>Wpisy pracy pracowników</h2>
-        <div className="tableWrap">
-          <table>
-            <thead><tr><th>Data</th><th>Pracownik</th><th>Firma</th><th>Typ</th><th>Opis</th><th>Czas pracy</th><th>Czas dojazdu</th><th>Łącznie</th><th>Koszty</th><th>Opis kosztu</th><th>Akcje</th></tr></thead>
-            <tbody>
-              {entries.map(e => <tr key={e.id}>
-                <td>{e.dateText}</td><td>{e.worker}</td><td>{e.company}</td><td>{e.type}</td><td>{e.description || '-'}</td><td>{minToText(Number(e.minutes || 0))}</td><td>{minToText(Number(e.travelMinutes || 0))}</td><td><b>{minToText(Number(e.minutes || 0) + Number(e.travelMinutes || 0))}</b></td><td>{money(e.additionalCost || 0)}</td><td>{e.additionalCostDescription || '-'}</td>
-                <td><button className="light iconBtn" onClick={() => setEditEntry(e)}>✏️</button><button className="light iconBtn" onClick={() => deleteEntry(e)}>🗑️</button></td>
-              </tr>)}
-            </tbody>
-          </table>
-        </div>
-        <p className="muted">Łączne koszty dodatkowe: {money(totalExtraCosts)}.</p>
-      </div>
-
-      {editEntry && <div className="card" style={{ maxWidth: 760, marginTop: 20 }}>
-        <h2>Edytuj wpis pracy</h2>
-        <form onSubmit={saveEntry}>
-          <Field label="Data"><input name="date" type="date" defaultValue={String(editEntry.date || '').slice(0, 10)} /></Field>
-          <Field label="Firma"><select name="companyId" defaultValue={editEntry.companyId || ''}>{data.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-          <Field label="Numer zlecenia"><input name="orderNumber" defaultValue={editEntry.orderNumber || ''} /></Field>
-          <Field label="Typ pracy"><select name="type" defaultValue={editEntry.type || 'inne'}>{workTypes.map(t => <option key={t}>{t}</option>)}</select></Field>
-          <Field label="Opis wykonanych prac"><textarea name="description" defaultValue={editEntry.description || ''} /></Field>
-          <Field label="Czas pracy"><input name="time" defaultValue={minToText(Number(editEntry.minutes || 0))} /></Field>
-          <Field label="Czas dojazdu"><input name="travelTime" defaultValue={minToText(Number(editEntry.travelMinutes || 0))} /></Field>
-          <Field label="Dodatkowy koszt"><input name="additionalCost" type="number" defaultValue={editEntry.additionalCost || 0} /></Field>
-          <Field label="Opis kosztu"><input name="additionalCostDescription" defaultValue={editEntry.additionalCostDescription || ''} /></Field>
-          <div className="row" style={{ marginTop: 12 }}><button className="orange" type="submit">Zapisz zmiany</button><button className="light" type="button" onClick={() => setEditEntry(null)}>Anuluj</button><button className="red" type="button" onClick={() => deleteEntry(editEntry)}>Usuń wpis</button></div>
-        </form>
-      </div>}
-    </div>
-  );
+function isoToday(){return new Date().toISOString().slice(0,10)}
+function localDateFromIso(iso){const [y,m,d]=String(iso).slice(0,10).split('-').map(Number);return new Date(y,m-1,d,12,0,0)}
+function businessDateList(from,to){
+ const today=isoToday(); const effectiveTo=to>today?today:to;
+ if(!from||!effectiveTo||from>effectiveTo)return [];
+ const out=[]; const cursor=localDateFromIso(from); const end=localDateFromIso(effectiveTo);
+ while(cursor<=end){const day=cursor.getDay();if(day!==0&&day!==6)out.push(cursor.toISOString().slice(0,10));cursor.setDate(cursor.getDate()+1)}
+ return out;
 }
+function absenceTypeLabel(type){return ({VACATION:'🏖 Urlop',SICK_LEAVE:'🤒 L4',CARE:'👶 Opieka',TIME_OFF:'⏱ Odbiór nadgodzin',OTHER:'📌 Inna nieobecność'})[type]||type}
+function absenceStatusLabel(status){return ({PENDING:'Oczekuje na akceptację',APPROVED:'Zaakceptowane',REJECTED:'Odrzucone'})[status]||status}
+function monthRange(month){const [y,m]=month.split('-').map(Number);return {from:`${month}-01`,to:`${month}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`}}
+function absenceMinutesForDate(absences,date,approvedOnly=true){
+ return (absences||[]).filter(a=>(!approvedOnly||a.status==='APPROVED')&&String(a.dateFrom).slice(0,10)<=date&&String(a.dateTo).slice(0,10)>=date).reduce((sum,a)=>sum+Number(a.minutes||0),0);
+}
+function buildDailyReport({entries,extraOrders,absences,userId,dateFrom,dateTo}){
+ const dates=businessDateList(dateFrom,dateTo); const grouped=new Map();
+ const add=(entry)=>{if(entry.userId!==userId)return;const date=String(entry.date||'').slice(0,10);if(date<dateFrom||date>dateTo)return;const row=grouped.get(date)||{work:0,travel:0,entries:0,companies:new Set()};row.work+=Number(entry.minutes||0);row.travel+=Number(entry.travelMinutes||0);row.entries++;if(entry.company?.name)row.companies.add(entry.company.name);else if(entry.companyName)row.companies.add(entry.companyName);grouped.set(date,row)};
+ (entries||[]).forEach(add);(extraOrders||[]).forEach(add);
+ return dates.map(date=>{const row=grouped.get(date)||{work:0,travel:0,entries:0,companies:new Set()};const approvedAbsence=Math.min(480,absenceMinutesForDate(absences,date,true));const pending=(absences||[]).filter(a=>a.userId===userId&&a.status==='PENDING'&&String(a.dateFrom).slice(0,10)<=date&&String(a.dateTo).slice(0,10)>=date);const accounted=row.work+row.travel+approvedAbsence;const missing=Math.max(0,480-accounted);let status='OK';if(approvedAbsence>=480&&row.work+row.travel===0)status='ABSENCE';else if(missing===480)status='NO_ENTRY';else if(missing>0)status='MISSING';return {...row,date,absence:approvedAbsence,pending,accounted,missing,status,companies:[...row.companies].join(', ')||'-'};}).sort((a,b)=>b.date.localeCompare(a.date));
+}
+
+function WorkerMissingAlert({data,user,onOpen}){
+ const today=isoToday(); const rows=buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:user.id,dateFrom:today,dateTo:today}); const row=rows[0];
+ if(!row)return null;
+ const bg=row.status==='OK'||row.status==='ABSENCE'?'#eaf8ef':row.status==='NO_ENTRY'?'#fdecec':'#fff6df';
+ const border=row.status==='OK'||row.status==='ABSENCE'?'#24a15a':row.status==='NO_ENTRY'?'#e33d45':'#e5a100';
+ const text=row.status==='ABSENCE'?'Dzisiaj masz zaakceptowaną nieobecność.':row.status==='OK'?`Dzisiejszy dzień jest rozliczony: ${minToText(row.accounted)}.`:row.status==='NO_ENTRY'?'Nie masz jeszcze żadnego wpisu za dzisiaj.':`Brakuje Ci dzisiaj ${minToText(row.missing)} do wymaganych 8 godzin.`;
+ return <div className="card" style={{maxWidth:1000,marginTop:20,background:bg,borderLeft:`5px solid ${border}`}}><div className="row between"><div><h2 style={{margin:'0 0 6px'}}>Raport braków — alert</h2><b>{text}</b>{row.pending.length>0&&<div className="muted" style={{marginTop:6}}>Masz zgłoszoną nieobecność oczekującą na akceptację.</div>}</div><button className="orange" type="button" onClick={onOpen}>Otwórz raport braków</button></div></div>
+}
+
+function AbsenceForm({data,user,reload,admin=false,defaultUserId=''}){
+ const today=isoToday(); const [form,setForm]=useState({userId:defaultUserId||user.id,type:'VACATION',dateFrom:today,dateTo:today,hours:'8',note:''});
+ useEffect(()=>{if(defaultUserId)setForm(f=>({...f,userId:defaultUserId}))},[defaultUserId]);
+ async function submit(e){e.preventDefault();try{await jsonFetch('/api/absences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,minutes:Math.round(Number(form.hours||8)*60),status:admin?'APPROVED':undefined})});setForm(f=>({...f,dateFrom:today,dateTo:today,hours:'8',note:''}));await reload();alert(admin?'Nieobecność została dodana.':'Zgłoszenie zostało wysłane do akceptacji administratora.')}catch(err){alert(err.message)}}
+ return <form className="card" onSubmit={submit}><h2>{admin?'Dodaj nieobecność pracownika':'Zgłoś urlop / L4 / odbiór nadgodzin'}</h2><div className="grid2">{admin&&<Field label="Pracownik"><select value={form.userId} onChange={e=>setForm({...form,userId:e.target.value})} required><option value="">Wybierz pracownika</option>{(data.users||[]).filter(u=>u.active!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>}<Field label="Rodzaj"><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}><option value="VACATION">Urlop</option><option value="SICK_LEAVE">L4</option><option value="CARE">Opieka</option><option value="TIME_OFF">Odbiór nadgodzin</option><option value="OTHER">Inna nieobecność</option></select></Field><Field label="Data od"><input type="date" value={form.dateFrom} onChange={e=>setForm({...form,dateFrom:e.target.value,dateTo:form.dateTo<e.target.value?e.target.value:form.dateTo})}/></Field><Field label="Data do"><input type="date" value={form.dateTo} min={form.dateFrom} onChange={e=>setForm({...form,dateTo:e.target.value})}/></Field><Field label="Liczba godzin dziennie"><input type="number" min="0.25" max="8" step="0.25" value={form.hours} onChange={e=>setForm({...form,hours:e.target.value})}/></Field><Field label="Opis / uwagi"><input value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opcjonalnie"/></Field></div><button className="orange">{admin?'Dodaj i zaakceptuj':'Wyślij zgłoszenie'}</button></form>
+}
+
+function MissingReportPanel({data,user,reload}){
+ const currentMonth=isoToday().slice(0,7); const initial=monthRange(currentMonth); const [month,setMonth]=useState(currentMonth); const [dateFrom,setDateFrom]=useState(initial.from); const [dateTo,setDateTo]=useState(initial.to);
+ function changeMonth(v){setMonth(v);const r=monthRange(v);setDateFrom(r.from);setDateTo(r.to)}
+ const rows=useMemo(()=>buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:user.id,dateFrom,dateTo}),[data,dateFrom,dateTo,user.id]);
+ const totals=rows.reduce((a,r)=>({work:a.work+r.work,travel:a.travel+r.travel,absence:a.absence+r.absence,missing:a.missing+r.missing,ok:a.ok+(r.missing===0?1:0),no:a.no+(r.status==='NO_ENTRY'?1:0),below:a.below+(r.status==='MISSING'?1:0)}),{work:0,travel:0,absence:0,missing:0,ok:0,no:0,below:0});
+ async function remove(a){if(!confirm('Usunąć zgłoszenie?'))return;try{await jsonFetch('/api/absences/'+a.id,{method:'DELETE'});await reload()}catch(err){alert(err.message)}}
+ const mine=(data.absences||[]).filter(a=>a.userId===user.id);
+ return <div className="panel"><h1>Raport braków</h1><div className="card"><div className="grid2"><Field label="Miesiąc"><input type="month" value={month} onChange={e=>changeMonth(e.target.value)}/></Field><Field label="Data od"><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></Field><Field label="Data do"><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/></Field></div></div><div className="kpis"><div className="card">Praca<h2>{minToText(totals.work)}</h2></div><div className="card">Dojazdy<h2>{minToText(totals.travel)}</h2></div><div className="card">Nieobecności<h2>{minToText(totals.absence)}</h2></div><div className="card">Brakuje<h2>{minToText(totals.missing)}</h2></div><div className="card">Dni bez wpisów<h2>{totals.no}</h2></div><div className="card">Dni poniżej 8 h<h2>{totals.below}</h2></div></div><div className="card"><h2>Realizacja czasu pracy</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firmy</th><th>Praca</th><th>Dojazd</th><th>Nieobecność</th><th>Rozliczone</th><th>Norma</th><th>Brakuje</th><th>Status</th></tr></thead><tbody>{rows.map(r=><tr key={r.date} style={{background:r.status==='OK'||r.status==='ABSENCE'?'#edf9f1':r.status==='NO_ENTRY'?'#fff0f0':'#fff8e6'}}><td>{r.date}</td><td>{r.companies}</td><td>{minToText(r.work)}</td><td>{minToText(r.travel)}</td><td>{r.absence?minToText(r.absence):'-'}{r.pending.length>0&&<div className="muted">oczekuje: {absenceTypeLabel(r.pending[0].type)}</div>}</td><td><b>{minToText(r.accounted)}</b></td><td>8h 0m</td><td>{r.missing?minToText(r.missing):'-'}</td><td>{r.status==='OK'?'✅ OK':r.status==='ABSENCE'?'🏖 Nieobecność':r.status==='NO_ENTRY'?'🔴 Brak wpisu':'⚠️ Poniżej 8 h'}</td></tr>)}</tbody></table></div></div><AbsenceForm data={data} user={user} reload={reload}/><div className="card"><h2>Moje zgłoszenia</h2><div className="tableWrap"><table><thead><tr><th>Rodzaj</th><th>Od</th><th>Do</th><th>Godzin dziennie</th><th>Status</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{mine.map(a=><tr key={a.id}><td>{absenceTypeLabel(a.type)}</td><td>{String(a.dateFrom).slice(0,10)}</td><td>{String(a.dateTo).slice(0,10)}</td><td>{minToText(a.minutes)}</td><td>{absenceStatusLabel(a.status)}</td><td>{a.note||'-'}</td><td>{a.status==='PENDING'?<button className="red" onClick={()=>remove(a)}>Usuń</button>:'-'}</td></tr>)}</tbody></table></div></div></div>
+}
+
+function WorkerStatsPanel({ data, reload }) {
+ const today=isoToday(); const currentMonth=today.slice(0,7); const initial=monthRange(currentMonth); const [workerId,setWorkerId]=useState('ALL'); const [companyFilter,setCompanyFilter]=useState('ALL'); const [month,setMonth]=useState(currentMonth); const [dateFrom,setDateFrom]=useState(initial.from); const [dateTo,setDateTo]=useState(initial.to); const [editEntry,setEditEntry]=useState(null);
+ const selectedUser=(data.users||[]).find(u=>u.id===workerId); function changeMonth(v){setMonth(v);const r=monthRange(v);setDateFrom(r.from);setDateTo(r.to)}
+ const companyName=id=>(data.companies||[]).find(c=>c.id===id)?.name||'Firma spoza listy';
+ const workerName=e=>e.user?.name||(data.users||[]).find(u=>u.id===e.userId)?.name||'Nieznany pracownik';
+ const allEntries=useMemo(()=>[...(data.workEntries||[]).map(e=>({...e,entryKind:'WORK'})),...(data.extraOrders||[]).map(e=>({...e,entryKind:'EXTRA'}))].map(e=>({...e,worker:workerName(e),company:companyName(e.companyId),dateText:String(e.date||'').slice(0,10)})),[data]);
+ const entries=allEntries.filter(e=>(workerId==='ALL'||e.userId===workerId)&&(!dateFrom||e.dateText>=dateFrom)&&(!dateTo||e.dateText<=dateTo)&&(companyFilter==='ALL'||e.companyId===companyFilter)).sort((a,b)=>b.dateText.localeCompare(a.dateText));
+ const work=entries.reduce((s,e)=>s+Number(e.minutes||0),0),travel=entries.reduce((s,e)=>s+Number(e.travelMinutes||0),0),companies=new Set(entries.map(e=>e.companyId)).size;
+ const rows=workerId==='ALL'?[]:buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:workerId,dateFrom,dateTo}); const absence=rows.reduce((s,r)=>s+r.absence,0),missing=rows.reduce((s,r)=>s+r.missing,0),required=rows.length*480,daysNo=rows.filter(r=>r.status==='NO_ENTRY').length,daysBelow=rows.filter(r=>r.status==='MISSING').length,daysOk=rows.filter(r=>r.missing===0).length;
+ async function updateAbsence(a,status){try{await jsonFetch('/api/absences/'+a.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});await reload()}catch(err){alert(err.message)}} async function deleteAbsence(a){if(!confirm('Usunąć nieobecność?'))return;try{await jsonFetch('/api/absences/'+a.id,{method:'DELETE'});await reload()}catch(err){alert(err.message)}}
+ async function deleteEntry(entry){if(!confirm(`Usunąć wpis: ${entry.worker} / ${entry.company}?`))return;try{await jsonFetch((entry.entryKind==='EXTRA'?'/api/extra-orders/':'/api/work/')+entry.id,{method:'DELETE'});await reload()}catch(err){alert(err.message)}}
+ return <div className="panel"><h1>Pracownicy</h1><div className="card"><div className="grid2"><Field label="Pracownik"><select value={workerId} onChange={e=>setWorkerId(e.target.value)}><option value="ALL">Wszyscy pracownicy</option>{(data.users||[]).filter(u=>u.active!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field><Field label="Miesiąc"><input type="month" value={month} onChange={e=>changeMonth(e.target.value)}/></Field><Field label="Data od"><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></Field><Field label="Data do"><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/></Field><Field label="Firma"><select value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)}><option value="ALL">Wszystkie firmy</option>{(data.companies||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field></div></div><div className="kpis"><div className="card">Pracownik<h2>{selectedUser?.name||'Wszyscy'}</h2></div><div className="card">Czas pracy<h2>{minToText(work)}</h2></div><div className="card">Dojazdy<h2>{minToText(travel)}</h2></div><div className="card">Nieobecności<h2>{minToText(absence)}</h2></div><div className="card">Rozliczone<h2>{minToText(work+travel+absence)}</h2></div><div className="card">Wymagana norma<h2>{workerId==='ALL'?'-':minToText(required)}</h2></div><div className="card">Brakuje<h2>{workerId==='ALL'?'-':minToText(missing)}</h2></div><div className="card">Firmy<h2>{companies}</h2></div><div className="card">Wpisy<h2>{entries.length}</h2></div></div>{workerId!=='ALL'&&<><div className="card"><h2>Realizacja czasu pracy — {selectedUser?.name}</h2><p><b>Dni OK:</b> {daysOk} &nbsp; <b>Poniżej normy:</b> {daysBelow} &nbsp; <b>Bez wpisu:</b> {daysNo}</p><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firmy</th><th>Wpisy</th><th>Praca</th><th>Dojazd</th><th>Nieobecność</th><th>Łącznie</th><th>Norma</th><th>Brakuje</th><th>Status</th></tr></thead><tbody>{rows.map(r=><tr key={r.date} style={{background:r.missing===0?'#edf9f1':r.status==='NO_ENTRY'?'#fff0f0':'#fff8e6'}}><td>{r.date}</td><td>{r.companies}</td><td>{r.entries}</td><td>{minToText(r.work)}</td><td>{minToText(r.travel)}</td><td>{r.absence?minToText(r.absence):'-'}</td><td><b>{minToText(r.accounted)}</b></td><td>8h 0m</td><td>{r.missing?minToText(r.missing):'-'}</td><td>{r.missing===0?'✅ OK':r.status==='NO_ENTRY'?'🔴 Brak wpisu':'⚠️ Poniżej 8 h'}</td></tr>)}</tbody></table></div></div><AbsenceForm data={data} user={{id:workerId}} reload={reload} admin defaultUserId={workerId}/></>}
+ <div className="card"><h2>Zgłoszenia nieobecności</h2><div className="tableWrap"><table><thead><tr><th>Pracownik</th><th>Rodzaj</th><th>Od</th><th>Do</th><th>Godzin/dzień</th><th>Status</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{(data.absences||[]).filter(a=>workerId==='ALL'||a.userId===workerId).map(a=><tr key={a.id}><td>{a.user?.name||'-'}</td><td>{absenceTypeLabel(a.type)}</td><td>{String(a.dateFrom).slice(0,10)}</td><td>{String(a.dateTo).slice(0,10)}</td><td>{minToText(a.minutes)}</td><td>{absenceStatusLabel(a.status)}</td><td>{a.note||'-'}</td><td><div className="row">{a.status==='PENDING'&&<><button className="orange" onClick={()=>updateAbsence(a,'APPROVED')}>Akceptuj</button><button className="light" onClick={()=>updateAbsence(a,'REJECTED')}>Odrzuć</button></>}<button className="red" onClick={()=>deleteAbsence(a)}>Usuń</button></div></td></tr>)}</tbody></table></div></div>
+ <div className="card"><h2>Wpisy pracy</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Pracownik</th><th>Firma</th><th>Źródło</th><th>Typ</th><th>Opis</th><th>Praca</th><th>Dojazd</th><th>Akcje</th></tr></thead><tbody>{entries.map(e=><tr key={`${e.entryKind}-${e.id}`}><td>{e.dateText}</td><td>{e.worker}</td><td>{e.company}</td><td>{e.entryKind==='EXTRA'?'Zlecenie dodatkowe':'Obsługa miesięczna'}</td><td>{e.type}</td><td>{e.description||e.title||'-'}</td><td>{minToText(e.minutes)}</td><td>{minToText(e.travelMinutes)}</td><td><button className="red" onClick={()=>deleteEntry(e)}>Usuń</button></td></tr>)}</tbody></table></div></div></div>
+}
+
 function EmployeeCard({u,onEdit,onDelete}){return <div className="card employeeCard"><div><h2>{u.name}</h2><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role==='ADMIN'?'Administrator':'BHP'}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" title="Edytuj" onClick={onEdit}>✏️</button><button className="light iconBtn" title="Usuń" onClick={onDelete}>🗑️</button></div></div>}
 function UsersPanel({data,editUser,setEditUser,addUser,saveUser,deleteUser}){return <div className="panel">{!editUser&&<><h1>Użytkownicy i role</h1><form className="card" onSubmit={addUser}><h2>Dodaj użytkownika</h2><div className="grid2"><input name="email" placeholder="Login nowego użytkownika" required/><input name="name" placeholder="Imię i nazwisko" required/><input name="password" type="password" placeholder="Hasło tymczasowe" required/><select name="role"><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select></div><h3>Uprawnienia</h3><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={k==='work'||k==='pwa'}/> {l}</label>)}</div><button>Dodaj użytkownika</button></form><h2>Lista użytkowników</h2>{data.users.map(u=><div className="card employeeCard" key={u.id}><div><h3>{u.name}</h3><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" onClick={()=>setEditUser(u)}>✏️</button><button className="light iconBtn" onClick={()=>deleteUser(u)}>🗑️</button></div></div>)}</>}{editUser&&<form className="card" onSubmit={saveUser}><h1>✏️ Edycja konta użytkownika</h1><button type="button" className="light" onClick={()=>setEditUser(null)}>← Wróć do listy użytkowników</button><div className="grid2"><input name="email" defaultValue={editUser.email}/><input name="name" defaultValue={editUser.name}/><select name="role" defaultValue={editUser.role}><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select><label><input name="active" type="checkbox" defaultChecked={editUser.active} style={{width:'auto'}}/> Konto aktywne</label></div><h2>Uprawnienia</h2><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={!!editUser.permissions?.[k]}/> {l}</label>)}</div><input name="password" type="password" placeholder="Nowe hasło — zostaw puste, jeśli nie chcesz zmieniać"/><button>Zapisz zmiany</button> <button type="button" className="red" onClick={()=>deleteUser(editUser)}>Usuń użytkownika</button></form>}</div>}
 function ChartPanel({title,rows,dataKey,color}){return <div className="panel"><h1>{title}</h1><div className="card chartBox"><ResponsiveContainer width="100%" height="100%"><BarChart data={rows}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip/><Bar dataKey={dataKey} fill={color}/></BarChart></ResponsiveContainer></div></div>}
