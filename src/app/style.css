@@ -4,7 +4,7 @@ html,body{margin:0;font-family:Calibri,'Segoe UI',Arial,sans-serif;background:#e
 .sidebar{background:#fff;border-right:1px solid #d7dee7;padding:14px;height:100vh;overflow:auto;position:sticky;top:0}
 .side-title{font-weight:800;margin:18px 0 8px}
 .userline{font-size:13px;margin:8px 0}
-.navbtn{width:100%;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:9px;padding:14px;margin:9px 0;font-weight:800;font-size:30px;line-height:1.1;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;transition:.15s}
+.navbtn{width:100%;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:9px;padding:14px;margin:9px 0;font-weight:800;font-size:15px;line-height:1.2;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;transition:.15s}
 .navbtn.active,.navbtn:hover{background:#ff5a14;color:#fff;border-color:#ff5a14;box-shadow:0 8px 18px rgba(255,90,20,.25)}
 .main{background:#eef4f8;min-width:0}
 .top{height:78px;background:linear-gradient(90deg,#102633,#07111a);color:white;display:flex;align-items:center;justify-content:space-between;padding:0 26px;border-bottom:4px solid #ff5a14}
@@ -180,3 +180,40 @@ tr.clickable:hover{background:#fff7ed}
 .company-map-popup-actions a{background:#132734}
 .company-map-empty{margin-top:12px;background:#f4f7fa;border-left:4px solid #7b8794;border-radius:8px;padding:12px}
 @media(max-width:800px){.company-map{height:480px}.company-map-card{padding:12px}}
+
+/* Checkbox Dojazd: pusty kwadrat, po zaznaczeniu zielony ptaszek wewnątrz */
+.travelCheckbox{
+  appearance:none;
+  -webkit-appearance:none;
+  width:22px!important;
+  height:22px;
+  min-width:22px;
+  margin:0!important;
+  padding:0!important;
+  border:2px solid #94a3b8;
+  border-radius:5px;
+  background:#fff;
+  cursor:pointer;
+  position:relative;
+  display:inline-block;
+  vertical-align:middle;
+}
+.travelCheckbox:checked{
+  background:#22c55e;
+  border-color:#22c55e;
+}
+.travelCheckbox:checked::after{
+  content:'✓';
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-56%);
+  color:#fff;
+  font-size:16px;
+  line-height:1;
+  font-weight:900;
+}
+.travelCheckbox:focus-visible{
+  outline:3px solid rgba(255,90,20,.3);
+  outline-offset:2px;
+}
