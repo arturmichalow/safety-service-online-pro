@@ -1591,6 +1591,9 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
 }
 
 function CompanyAdminDetails({row,data,selectedMonth,onClose}){
+ const [historySourceFilter,setHistorySourceFilter]=useState('ALL');
+ const [historySort,setHistorySort]=useState({key:'date',direction:'desc'});
+
  const companyEntries=useMemo(()=>[
   ...(row.entries||[]).map(entry=>({
    id:`WORK-${entry.id}`,
@@ -1601,7 +1604,9 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
    type:entry.type||'inne',
    description:entry.description||entry.title||'-',
    minutes:Number(entry.minutes||0),
-   travelMinutes:Number(entry.travelMinutes||0)
+   travelMinutes:Number(entry.travelMinutes||0),
+   netAmount:0,
+   orderNumber:entry.orderNumber||null
   })),
   ...(row.orders||[])
    .filter(order=>String(order.type||'').toLowerCase()!=='szkolenie wstępne')
@@ -1614,9 +1619,54 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
     type:order.type||'inne',
     description:order.description||order.title||'-',
     minutes:Number(order.minutes||0),
-    travelMinutes:Number(order.travelMinutes||0)
+    travelMinutes:Number(order.travelMinutes||0),
+    netAmount:Number(order.netAmount||0),
+    orderNumber:order.orderNumber||null
    }))
  ].sort((a,b)=>new Date(b.date)-new Date(a.date)),[row.entries,row.orders,data.users]);
+
+ const visibleCompanyEntries=useMemo(()=>{
+  const filtered=companyEntries.filter(item=>
+   historySourceFilter==='ALL'||
+   (historySourceFilter==='MONTHLY'&&item.source==='Obsługa miesięczna')||
+   (historySourceFilter==='EXTRA'&&item.source==='Zlecenie dodatkowe')
+  );
+
+  return [...filtered].sort((a,b)=>{
+   let av;
+   let bv;
+
+   if(historySort.key==='date'){
+    av=new Date(a.date||0).getTime();
+    bv=new Date(b.date||0).getTime();
+   }else if(historySort.key==='total'){
+    av=Number(a.minutes||0)+Number(a.travelMinutes||0);
+    bv=Number(b.minutes||0)+Number(b.travelMinutes||0);
+   }else if(['minutes','travelMinutes','netAmount'].includes(historySort.key)){
+    av=Number(a[historySort.key]||0);
+    bv=Number(b[historySort.key]||0);
+   }else{
+    av=String(a[historySort.key]||'').toLocaleLowerCase('pl-PL');
+    bv=String(b[historySort.key]||'').toLocaleLowerCase('pl-PL');
+   }
+
+   if(av>bv)return historySort.direction==='asc'?1:-1;
+   if(av<bv)return historySort.direction==='asc'?-1:1;
+   return 0;
+  });
+ },[companyEntries,historySourceFilter,historySort]);
+
+ function toggleHistorySort(key){
+  setHistorySort(prev=>({
+   key,
+   direction:prev.key===key&&prev.direction==='asc'?'desc':'asc'
+  }));
+ }
+
+ function historySortArrow(key){
+  if(historySort.key!==key)return '↕';
+  return historySort.direction==='asc'?'↑':'↓';
+ }
 
  const totals=useMemo(()=>companyEntries.reduce((result,item)=>({
   work:result.work+item.minutes,
@@ -1717,15 +1767,47 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
    </div>
   </div>
 
-  <h3>Szczegółowa historia pracy i dojazdów</h3>
-  <div className="tableWrap">
+  <div className="row between" style={{marginTop:18,gap:12,flexWrap:'wrap'}}>
+   <h3 style={{margin:0}}>Szczegółowa historia pracy i dojazdów</h3>
+   <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700}}>
+    Filtr źródła:
+    <select value={historySourceFilter} onChange={e=>setHistorySourceFilter(e.target.value)} style={{width:'auto',minWidth:220,margin:0}}>
+     <option value="ALL">Wszystkie wpisy</option>
+     <option value="MONTHLY">Obsługa miesięczna</option>
+     <option value="EXTRA">Zlecenia dodatkowe</option>
+    </select>
+   </label>
+  </div>
+  <div className="tableWrap" style={{marginTop:12}}>
    <table>
-    <thead><tr><th>Data</th><th>Pracownik</th><th>Źródło</th><th>Czynność</th><th>Opis</th><th>Praca</th><th>Dojazd</th><th>Łącznie</th></tr></thead>
-    <tbody>{companyEntries.map(item=><tr key={item.id}><td>{String(item.date||'').slice(0,10)}</td><td>{item.userName}</td><td>{item.source}</td><td>{item.type}</td><td style={{maxWidth:520,whiteSpace:'normal'}}>{item.description}</td><td>{minToText(item.minutes)}</td><td>{item.travelMinutes?minToText(item.travelMinutes):'-'}</td><td><b>{minToText(item.minutes+item.travelMinutes)}</b></td></tr>)}</tbody>
+    <thead><tr>
+     <th onClick={()=>toggleHistorySort('date')} style={{cursor:'pointer'}}>Data {historySortArrow('date')}</th>
+     <th onClick={()=>toggleHistorySort('userName')} style={{cursor:'pointer'}}>Pracownik {historySortArrow('userName')}</th>
+     <th onClick={()=>toggleHistorySort('source')} style={{cursor:'pointer'}}>Źródło {historySortArrow('source')}</th>
+     <th onClick={()=>toggleHistorySort('type')} style={{cursor:'pointer'}}>Czynność {historySortArrow('type')}</th>
+     <th>Opis</th>
+     <th onClick={()=>toggleHistorySort('orderNumber')} style={{cursor:'pointer'}}>Numer zlecenia / PO {historySortArrow('orderNumber')}</th>
+     <th onClick={()=>toggleHistorySort('netAmount')} style={{cursor:'pointer'}}>Kwota zlecenia {historySortArrow('netAmount')}</th>
+     <th onClick={()=>toggleHistorySort('minutes')} style={{cursor:'pointer'}}>Praca {historySortArrow('minutes')}</th>
+     <th onClick={()=>toggleHistorySort('travelMinutes')} style={{cursor:'pointer'}}>Dojazd {historySortArrow('travelMinutes')}</th>
+     <th onClick={()=>toggleHistorySort('total')} style={{cursor:'pointer'}}>Łącznie {historySortArrow('total')}</th>
+    </tr></thead>
+    <tbody>{visibleCompanyEntries.map(item=><tr key={item.id}>
+     <td>{String(item.date||'').slice(0,10)}</td>
+     <td>{item.userName}</td>
+     <td>{item.source}</td>
+     <td>{item.type}</td>
+     <td style={{maxWidth:420,whiteSpace:'normal'}}>{item.description}</td>
+     <td>{item.orderNumber||'-'}</td>
+     <td>{item.source==='Zlecenie dodatkowe'?money(item.netAmount):'-'}</td>
+     <td>{minToText(item.minutes)}</td>
+     <td>{item.travelMinutes?minToText(item.travelMinutes):'-'}</td>
+     <td><b>{minToText(item.minutes+item.travelMinutes)}</b></td>
+    </tr>)}</tbody>
    </table>
   </div>
 
-  {companyEntries.length===0&&<p className="muted">Brak wpisów pracy i zleceń w wybranym miesiącu.</p>}
+  {visibleCompanyEntries.length===0&&<p className="muted">Brak wpisów spełniających wybrany filtr.</p>}
  </div>
 }
 
