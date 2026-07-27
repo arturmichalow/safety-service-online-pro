@@ -33,6 +33,7 @@ model User {
   active            Boolean     @default(true)
   permissions       Json?
   workEntries       WorkEntry[]
+  extraOrders       ExtraOrder[]
   quickNotes        QuickNote[]
   auditLogs         AuditLog[]
   assignedCompanies Company[]
@@ -112,6 +113,8 @@ model ExtraOrder {
   id                   String   @id @default(cuid())
   companyId            String
   company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId               String?
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   date                 DateTime @default(now())
   title                String
   type                 String
