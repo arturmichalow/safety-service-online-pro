@@ -1852,8 +1852,17 @@ function ShopOrdersPanel({data,shopOrder,setShopOrder,addShopOrder,deleteExtraOr
 
 
 function WorkerStatsPanel({ data }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = today.slice(0, 7);
   const [workerFilter, setWorkerFilter] = useState('ALL');
   const [companyFilter, setCompanyFilter] = useState('ALL');
+  const [monthFilter, setMonthFilter] = useState(currentMonth);
+  const [dateFrom, setDateFrom] = useState(`${currentMonth}-01`);
+  const [dateTo, setDateTo] = useState(() => {
+    const [year, month] = currentMonth.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    return `${currentMonth}-${String(lastDay).padStart(2, '0')}`;
+  });
   const [editEntry, setEditEntry] = useState(null);
 
   const companyName = (id) =>
@@ -1867,35 +1876,141 @@ function WorkerStatsPanel({ data }) {
     entry.createdBy?.name ||
     'Nieznany pracownik';
 
+  const allEntries = useMemo(() => {
+    return (data.workEntries || []).map(e => ({
+      ...e,
+      worker: workerName(e),
+      company: companyName(e.companyId),
+      dateText: String(e.date || '').slice(0, 10)
+    }));
+  }, [data.workEntries, data.companies, data.users]);
+
+  const workers = useMemo(() => {
+    const names = [
+      ...(data.users || []).filter(u => u.active !== false).map(u => u.name),
+      ...allEntries.map(e => e.worker)
+    ].filter(Boolean);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'pl'));
+  }, [data.users, allEntries]);
+
   const entries = useMemo(() => {
-    return (data.workEntries || [])
-      .map(e => ({
-        ...e,
-        worker: workerName(e),
-        company: companyName(e.companyId),
-        dateText: String(e.date || '').slice(0, 10)
-      }))
-      .filter(e =>
-        (workerFilter === 'ALL' || e.worker === workerFilter) &&
-        (companyFilter === 'ALL' || e.companyId === companyFilter)
-      )
+    return allEntries
+      .filter(e => !dateFrom || e.dateText >= dateFrom)
+      .filter(e => !dateTo || e.dateText <= dateTo)
+      .filter(e => workerFilter === 'ALL' || e.worker === workerFilter)
+      .filter(e => companyFilter === 'ALL' || e.companyId === companyFilter)
       .sort((a, b) =>
+        new Date(b.date) - new Date(a.date) ||
         a.worker.localeCompare(b.worker, 'pl') ||
-        a.company.localeCompare(b.company, 'pl') ||
-        new Date(b.date) - new Date(a.date)
+        a.company.localeCompare(b.company, 'pl')
       );
-  }, [data.workEntries, data.companies, data.users, workerFilter, companyFilter]);
+  }, [allEntries, dateFrom, dateTo, workerFilter, companyFilter]);
 
-  const workers = [...new Set((data.workEntries || []).map(e => workerName(e)))]
-    .sort((a, b) => a.localeCompare(b, 'pl'));
+  function setMonthRange(value) {
+    setMonthFilter(value);
+    if (!value) return;
+    const [year, month] = value.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    setDateFrom(`${value}-01`);
+    setDateTo(`${value}-${String(lastDay).padStart(2, '0')}`);
+  }
 
-  const totalMinutes = entries.reduce((s, r) => s + Number(r.minutes || 0) + Number(r.travelMinutes || 0), 0);
-  const totalEntries = entries.length;
-  const totalExtraCosts = entries.reduce((s, r) => s + Number(r.additionalCost || 0), 0);
+  function localDate(iso) {
+    const [year, month, day] = String(iso).split('-').map(Number);
+    return new Date(year, month - 1, day, 12, 0, 0);
+  }
+
+  function businessDates(from, to) {
+    if (!from || !to || from > to) return [];
+    const effectiveTo = to > today ? today : to;
+    if (from > effectiveTo) return [];
+    const result = [];
+    const cursor = localDate(from);
+    const end = localDate(effectiveTo);
+    while (cursor <= end) {
+      const day = cursor.getDay();
+      if (day !== 0 && day !== 6) result.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return result;
+  }
+
+  const selectedWorkerEntries = useMemo(
+    () => entries.filter(e => workerFilter === 'ALL' || e.worker === workerFilter),
+    [entries, workerFilter]
+  );
+
+  const workMinutes = selectedWorkerEntries.reduce((s, r) => s + Number(r.minutes || 0), 0);
+  const travelMinutes = selectedWorkerEntries.reduce((s, r) => s + Number(r.travelMinutes || 0), 0);
+  const totalMinutes = workMinutes + travelMinutes;
+  const totalEntries = selectedWorkerEntries.length;
+  const totalExtraCosts = selectedWorkerEntries.reduce((s, r) => s + Number(r.additionalCost || 0), 0);
+  const uniqueCompanies = new Set(selectedWorkerEntries.map(r => r.companyId || r.company)).size;
+
+  const expectedDates = useMemo(() => businessDates(dateFrom, dateTo), [dateFrom, dateTo, today]);
+
+  const dailyRows = useMemo(() => {
+    if (workerFilter === 'ALL') return [];
+    const grouped = new Map();
+    selectedWorkerEntries.forEach(entry => {
+      const current = grouped.get(entry.dateText) || { work: 0, travel: 0, entries: 0, companies: new Set() };
+      current.work += Number(entry.minutes || 0);
+      current.travel += Number(entry.travelMinutes || 0);
+      current.entries += 1;
+      current.companies.add(entry.company);
+      grouped.set(entry.dateText, current);
+    });
+
+    return expectedDates.map(date => {
+      const row = grouped.get(date) || { work: 0, travel: 0, entries: 0, companies: new Set() };
+      const total = row.work + row.travel;
+      const missing = Math.max(0, 480 - total);
+      return {
+        date,
+        work: row.work,
+        travel: row.travel,
+        total,
+        missing,
+        entries: row.entries,
+        companies: [...row.companies].join(', ') || '-',
+        status: total >= 480 ? 'OK' : total === 0 ? 'BRAK_WPISU' : 'BRAKUJE'
+      };
+    }).sort((a, b) => b.date.localeCompare(a.date));
+  }, [workerFilter, selectedWorkerEntries, expectedDates]);
+
+  const requiredMinutes = workerFilter === 'ALL' ? 0 : expectedDates.length * 480;
+  const missingMinutes = workerFilter === 'ALL' ? 0 : dailyRows.reduce((s, r) => s + r.missing, 0);
+  const daysBelowNorm = dailyRows.filter(r => r.total > 0 && r.total < 480).length;
+  const daysWithoutEntries = dailyRows.filter(r => r.total === 0).length;
+  const daysAtNorm = dailyRows.filter(r => r.total >= 480).length;
+
+  const companySummary = useMemo(() => {
+    const map = new Map();
+    selectedWorkerEntries.forEach(entry => {
+      const key = entry.company;
+      const current = map.get(key) || { company: key, work: 0, travel: 0, entries: 0 };
+      current.work += Number(entry.minutes || 0);
+      current.travel += Number(entry.travelMinutes || 0);
+      current.entries += 1;
+      map.set(key, current);
+    });
+    return [...map.values()].sort((a, b) => (b.work + b.travel) - (a.work + a.travel));
+  }, [selectedWorkerEntries]);
+
+  const activitySummary = useMemo(() => {
+    const map = new Map();
+    selectedWorkerEntries.forEach(entry => {
+      const key = entry.type || 'inne';
+      const current = map.get(key) || { type: key, minutes: 0, entries: 0 };
+      current.minutes += Number(entry.minutes || 0);
+      current.entries += 1;
+      map.set(key, current);
+    });
+    return [...map.values()].sort((a, b) => b.minutes - a.minutes);
+  }, [selectedWorkerEntries]);
 
   async function deleteEntry(entry) {
     if (!confirm(`Usunąć wpis pracy: ${entry.worker} / ${entry.company}?`)) return;
-
     try {
       await jsonFetch('/api/work/' + entry.id, { method: 'DELETE' });
       alert('Wpis usunięty.');
@@ -1907,10 +2022,8 @@ function WorkerStatsPanel({ data }) {
 
   async function saveEntry(e) {
     e.preventDefault();
-
     try {
       const form = e.currentTarget;
-
       const body = {
         date: form.date.value,
         companyId: form.companyId.value,
@@ -1942,135 +2055,121 @@ function WorkerStatsPanel({ data }) {
     <div className="panel">
       <h1>Pracownicy</h1>
 
-      <div className="kpis">
-        <div className="card">Pracownicy<h2>{workers.length}</h2></div>
-        <div className="card">Firmy w zestawieniu<h2>{new Set(entries.map(r => r.company)).size}</h2></div>
-        <div className="card">Łączny czas<h2>{minToText(totalMinutes)}</h2></div>
-        <div className="card">Ilość wpisów<h2>{totalEntries}</h2></div>
-      </div>
-
-      <div className="card">
-        <h2>Wpisy pracy pracowników</h2>
-
+      <div className="card" style={{marginBottom:16}}>
+        <h2 style={{marginTop:0}}>Zakres analizy</h2>
         <div className="grid2">
-          <Field label="Filtr pracownika">
+          <Field label="Pracownik">
             <select value={workerFilter} onChange={e => setWorkerFilter(e.target.value)}>
               <option value="ALL">Wszyscy pracownicy</option>
               {workers.map(w => <option key={w} value={w}>{w}</option>)}
             </select>
           </Field>
-
-          <Field label="Filtr firmy">
+          <Field label="Miesiąc — szybki wybór">
+            <input type="month" value={monthFilter} onChange={e => setMonthRange(e.target.value)} />
+          </Field>
+          <Field label="Data od">
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </Field>
+          <Field label="Data do">
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </Field>
+          <Field label="Firma">
             <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)}>
               <option value="ALL">Wszystkie firmy</option>
               {data.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
         </div>
-
-        <div className="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Pracownik</th>
-                <th>Firma</th>
-                <th>Typ</th>
-                <th>Opis</th>
-                <th>Czas pracy</th>
-                <th>Czas dojazdu</th>
-                <th>Koszty</th>
-                <th>Opis kosztu</th>
-                <th>Akcje</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {entries.map(e => (
-                <tr key={e.id}>
-                  <td>{e.dateText}</td>
-                  <td>{e.worker}</td>
-                  <td>{e.company}</td>
-                  <td>{e.type}</td>
-                  <td>{e.description || '-'}</td>
-                  <td>{minToText(Number(e.minutes || 0))}</td>
-                  <td>{minToText(Number(e.travelMinutes || 0))}</td>
-                  <td>{money(e.additionalCost || 0)}</td>
-                  <td>{e.additionalCostDescription || '-'}</td>
-                  <td>
-                    <button className="light iconBtn" onClick={() => setEditEntry(e)}>✏️</button>
-                    <button className="light iconBtn" onClick={() => deleteEntry(e)}>🗑️</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <p className="muted">
-          Łączne koszty dodatkowe: {money(totalExtraCosts)}. Tutaj możesz edytować albo usuwać pojedyncze wpisy pracy.
+        <p className="muted" style={{marginBottom:0}}>
+          Norma jest liczona jako 8 godzin dziennie od poniedziałku do piątku. Dni przyszłe nie są wykazywane jako braki.
         </p>
       </div>
 
-      {editEntry && (
-        <div className="card" style={{ maxWidth: 760, marginTop: 20 }}>
-          <h2>Edytuj wpis pracy</h2>
+      <div className="kpis">
+        <div className="card">{workerFilter === 'ALL' ? 'Pracownicy' : 'Wybrany pracownik'}<h2>{workerFilter === 'ALL' ? workers.length : workerFilter}</h2></div>
+        <div className="card">Czas pracy<h2>{minToText(workMinutes)}</h2></div>
+        <div className="card">Czas dojazdów<h2>{minToText(travelMinutes)}</h2></div>
+        <div className="card">Praca + dojazdy<h2>{minToText(totalMinutes)}</h2></div>
+        <div className="card">Firmy<h2>{uniqueCompanies}</h2></div>
+        <div className="card">Liczba wpisów<h2>{totalEntries}</h2></div>
+        {workerFilter !== 'ALL' && <>
+          <div className="card">Dni robocze<h2>{expectedDates.length}</h2></div>
+          <div className="card">Wymagany czas<h2>{minToText(requiredMinutes)}</h2></div>
+          <div className="card" style={{borderLeft:'4px solid #f04444'}}>Brakujący czas<h2>{minToText(missingMinutes)}</h2></div>
+          <div className="card" style={{borderLeft:'4px solid #ff8a00'}}>Dni poniżej 8 h<h2>{daysBelowNorm}</h2></div>
+          <div className="card" style={{borderLeft:'4px solid #f04444'}}>Dni bez wpisu<h2>{daysWithoutEntries}</h2></div>
+          <div className="card" style={{borderLeft:'4px solid #20b15a'}}>Dni z normą<h2>{daysAtNorm}</h2></div>
+        </>}
+      </div>
 
-          <form onSubmit={saveEntry}>
-            <Field label="Data">
-              <input name="date" type="date" defaultValue={String(editEntry.date || '').slice(0, 10)} />
-            </Field>
-
-            <Field label="Firma">
-              <select name="companyId" defaultValue={editEntry.companyId || ''}>
-                {data.companies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Numer zlecenia">
-              <input name="orderNumber" defaultValue={editEntry.orderNumber || ''} />
-            </Field>
-
-            <Field label="Typ pracy">
-              <select name="type" defaultValue={editEntry.type || 'inne'}>
-                {workTypes.map(t => <option key={t}>{t}</option>)}
-              </select>
-            </Field>
-
-            <Field label="Opis wykonanych prac">
-              <textarea name="description" defaultValue={editEntry.description || ''} />
-            </Field>
-
-            <Field label="Czas pracy">
-              <input name="time" defaultValue={minToText(Number(editEntry.minutes || 0))} />
-            </Field>
-
-            <Field label="Czas dojazdu">
-              <input name="travelTime" defaultValue={minToText(Number(editEntry.travelMinutes || 0))} />
-            </Field>
-
-            <Field label="Dodatkowy koszt">
-              <input name="additionalCost" type="number" defaultValue={editEntry.additionalCost || 0} />
-            </Field>
-
-            <Field label="Opis kosztu">
-              <input name="additionalCostDescription" defaultValue={editEntry.additionalCostDescription || ''} />
-            </Field>
-
-            <div className="row" style={{ marginTop: 12 }}>
-              <button className="orange" type="submit">Zapisz zmiany</button>
-              <button className="light" type="button" onClick={() => setEditEntry(null)}>Anuluj</button>
-              <button className="red" type="button" onClick={() => deleteEntry(editEntry)}>Usuń wpis</button>
-            </div>
-          </form>
+      {workerFilter !== 'ALL' && <div className="card" style={{marginTop:16}}>
+        <h2>Realizacja czasu pracy — {workerFilter}</h2>
+        <div className="tableWrap">
+          <table>
+            <thead><tr><th>Data</th><th>Firmy</th><th>Wpisy</th><th>Praca</th><th>Dojazd</th><th>Łącznie</th><th>Norma</th><th>Brakuje</th><th>Status</th></tr></thead>
+            <tbody>
+              {dailyRows.map(row => <tr key={row.date} style={{background:row.status==='BRAK_WPISU'?'#fff0f0':row.status==='BRAKUJE'?'#fff8e8':'#effaf3'}}>
+                <td>{row.date}</td><td>{row.companies}</td><td>{row.entries}</td><td>{minToText(row.work)}</td><td>{minToText(row.travel)}</td><td><b>{minToText(row.total)}</b></td><td>8h 0m</td><td>{row.missing ? minToText(row.missing) : '-'}</td>
+                <td><b>{row.status==='OK'?'✅ OK':row.status==='BRAK_WPISU'?'🔴 Brak wpisu':'⚠️ Poniżej 8 h'}</b></td>
+              </tr>)}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>}
+
+      {workerFilter !== 'ALL' && <div className="grid" style={{marginTop:16}}>
+        <div className="card">
+          <h2>Czas według firm</h2>
+          <div className="tableWrap"><table><thead><tr><th>Firma</th><th>Praca</th><th>Dojazd</th><th>Łącznie</th><th>Wpisy</th><th>Udział</th></tr></thead><tbody>
+            {companySummary.map(row => {
+              const combined = row.work + row.travel;
+              const share = totalMinutes ? (combined / totalMinutes) * 100 : 0;
+              return <tr key={row.company}><td>{row.company}</td><td>{minToText(row.work)}</td><td>{minToText(row.travel)}</td><td><b>{minToText(combined)}</b></td><td>{row.entries}</td><td>{share.toFixed(1)}%</td></tr>;
+            })}
+          </tbody></table></div>
+        </div>
+        <div className="card">
+          <h2>Czas według czynności</h2>
+          <div className="tableWrap"><table><thead><tr><th>Czynność</th><th>Czas</th><th>Wpisy</th><th>Udział pracy</th></tr></thead><tbody>
+            {activitySummary.map(row => <tr key={row.type}><td>{row.type}</td><td><b>{minToText(row.minutes)}</b></td><td>{row.entries}</td><td>{workMinutes ? ((row.minutes / workMinutes) * 100).toFixed(1) : '0.0'}%</td></tr>)}
+          </tbody></table></div>
+        </div>
+      </div>}
+
+      <div className="card" style={{marginTop:16}}>
+        <h2>Wpisy pracy pracowników</h2>
+        <div className="tableWrap">
+          <table>
+            <thead><tr><th>Data</th><th>Pracownik</th><th>Firma</th><th>Typ</th><th>Opis</th><th>Czas pracy</th><th>Czas dojazdu</th><th>Łącznie</th><th>Koszty</th><th>Opis kosztu</th><th>Akcje</th></tr></thead>
+            <tbody>
+              {entries.map(e => <tr key={e.id}>
+                <td>{e.dateText}</td><td>{e.worker}</td><td>{e.company}</td><td>{e.type}</td><td>{e.description || '-'}</td><td>{minToText(Number(e.minutes || 0))}</td><td>{minToText(Number(e.travelMinutes || 0))}</td><td><b>{minToText(Number(e.minutes || 0) + Number(e.travelMinutes || 0))}</b></td><td>{money(e.additionalCost || 0)}</td><td>{e.additionalCostDescription || '-'}</td>
+                <td><button className="light iconBtn" onClick={() => setEditEntry(e)}>✏️</button><button className="light iconBtn" onClick={() => deleteEntry(e)}>🗑️</button></td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+        <p className="muted">Łączne koszty dodatkowe: {money(totalExtraCosts)}.</p>
+      </div>
+
+      {editEntry && <div className="card" style={{ maxWidth: 760, marginTop: 20 }}>
+        <h2>Edytuj wpis pracy</h2>
+        <form onSubmit={saveEntry}>
+          <Field label="Data"><input name="date" type="date" defaultValue={String(editEntry.date || '').slice(0, 10)} /></Field>
+          <Field label="Firma"><select name="companyId" defaultValue={editEntry.companyId || ''}>{data.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+          <Field label="Numer zlecenia"><input name="orderNumber" defaultValue={editEntry.orderNumber || ''} /></Field>
+          <Field label="Typ pracy"><select name="type" defaultValue={editEntry.type || 'inne'}>{workTypes.map(t => <option key={t}>{t}</option>)}</select></Field>
+          <Field label="Opis wykonanych prac"><textarea name="description" defaultValue={editEntry.description || ''} /></Field>
+          <Field label="Czas pracy"><input name="time" defaultValue={minToText(Number(editEntry.minutes || 0))} /></Field>
+          <Field label="Czas dojazdu"><input name="travelTime" defaultValue={minToText(Number(editEntry.travelMinutes || 0))} /></Field>
+          <Field label="Dodatkowy koszt"><input name="additionalCost" type="number" defaultValue={editEntry.additionalCost || 0} /></Field>
+          <Field label="Opis kosztu"><input name="additionalCostDescription" defaultValue={editEntry.additionalCostDescription || ''} /></Field>
+          <div className="row" style={{ marginTop: 12 }}><button className="orange" type="submit">Zapisz zmiany</button><button className="light" type="button" onClick={() => setEditEntry(null)}>Anuluj</button><button className="red" type="button" onClick={() => deleteEntry(editEntry)}>Usuń wpis</button></div>
+        </form>
+      </div>}
     </div>
   );
 }
-
 function EmployeeCard({u,onEdit,onDelete}){return <div className="card employeeCard"><div><h2>{u.name}</h2><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role==='ADMIN'?'Administrator':'BHP'}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" title="Edytuj" onClick={onEdit}>✏️</button><button className="light iconBtn" title="Usuń" onClick={onDelete}>🗑️</button></div></div>}
 function UsersPanel({data,editUser,setEditUser,addUser,saveUser,deleteUser}){return <div className="panel">{!editUser&&<><h1>Użytkownicy i role</h1><form className="card" onSubmit={addUser}><h2>Dodaj użytkownika</h2><div className="grid2"><input name="email" placeholder="Login nowego użytkownika" required/><input name="name" placeholder="Imię i nazwisko" required/><input name="password" type="password" placeholder="Hasło tymczasowe" required/><select name="role"><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select></div><h3>Uprawnienia</h3><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={k==='work'||k==='pwa'}/> {l}</label>)}</div><button>Dodaj użytkownika</button></form><h2>Lista użytkowników</h2>{data.users.map(u=><div className="card employeeCard" key={u.id}><div><h3>{u.name}</h3><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" onClick={()=>setEditUser(u)}>✏️</button><button className="light iconBtn" onClick={()=>deleteUser(u)}>🗑️</button></div></div>)}</>}{editUser&&<form className="card" onSubmit={saveUser}><h1>✏️ Edycja konta użytkownika</h1><button type="button" className="light" onClick={()=>setEditUser(null)}>← Wróć do listy użytkowników</button><div className="grid2"><input name="email" defaultValue={editUser.email}/><input name="name" defaultValue={editUser.name}/><select name="role" defaultValue={editUser.role}><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select><label><input name="active" type="checkbox" defaultChecked={editUser.active} style={{width:'auto'}}/> Konto aktywne</label></div><h2>Uprawnienia</h2><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={!!editUser.permissions?.[k]}/> {l}</label>)}</div><input name="password" type="password" placeholder="Nowe hasło — zostaw puste, jeśli nie chcesz zmieniać"/><button>Zapisz zmiany</button> <button type="button" className="red" onClick={()=>deleteUser(editUser)}>Usuń użytkownika</button></form>}</div>}
 function ChartPanel({title,rows,dataKey,color}){return <div className="panel"><h1>{title}</h1><div className="card chartBox"><ResponsiveContainer width="100%" height="100%"><BarChart data={rows}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip/><Bar dataKey={dataKey} fill={color}/></BarChart></ResponsiveContainer></div></div>}
