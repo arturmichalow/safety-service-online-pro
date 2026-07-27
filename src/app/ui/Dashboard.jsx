@@ -57,6 +57,7 @@ function inSelectedMonth(date){
  const [editUser,setEditUser]=useState(null);
  const [ai,setAi]=useState('');
  const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
+ const [entriesDate,setEntriesDate]=useState(new Date().toISOString().slice(0,10));
  const [workCompanySearch,setWorkCompanySearch]=useState('');
  const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',type:'inne',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:'',status:'OPEN'});
  const [shopOrder,setShopOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',margin:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',status:'OPEN'});
@@ -76,15 +77,36 @@ function inSelectedMonth(date){
    .filter(entry=>{
     const entryDate=String(entry.date||'').slice(0,10);
 
-    return entry.userId===user.id && entryDate===form.date;
+    return entry.userId===user.id && entryDate===entriesDate;
    })
    .sort((a,b)=>new Date(b.createdAt||b.date)-new Date(a.createdAt||a.date));
- },[data.workEntries,user.id,form.date]);
+ },[data.workEntries,user.id,entriesDate]);
 
  const myDayTotalMinutes=useMemo(()=>{
-  // Czas wpisu grupowego jest już dzielony pomiędzy firmy podczas zapisu,
-  // dlatego tutaj sumujemy wszystkie rekordy bez dodatkowego grupowania.
-  return myDayEntries.reduce((sum,entry)=>sum+Number(entry.minutes||0),0);
+  // Wpis grupowy tworzy osobny rekord dla każdej firmy, ale czas pracy
+  // powinien zostać policzony tylko raz. Rekordy utworzone razem mają
+  // te same dane i bardzo zbliżony czas utworzenia.
+  const countedGroups=new Set();
+
+  return myDayEntries.reduce((sum,entry)=>{
+   const createdAt=new Date(entry.createdAt||entry.date).getTime();
+   const createdBatch=Number.isFinite(createdAt)?Math.floor(createdAt/60000):0;
+   const groupKey=[
+    entry.userId||'',
+    String(entry.date||'').slice(0,10),
+    entry.type||'',
+    entry.title||'',
+    entry.description||'',
+    Number(entry.minutes||0),
+    Number(entry.travelMinutes||0),
+    entry.orderNumber||'',
+    createdBatch
+   ].join('|');
+
+   if(countedGroups.has(groupKey))return sum;
+   countedGroups.add(groupKey);
+   return sum+Number(entry.minutes||0);
+  },0);
  },[myDayEntries]);
 
  function workEntryCompanyName(entry){
@@ -332,7 +354,7 @@ return {
   });
   setWorkCompanySearch('');
   await load();
-  alert(companyIds.length>1?`Zapisano wpisy dla ${companyIds.length} firm.`:'Wpis został zapisany.');
+  alert(companyIds.length>1?`Zapisano wpisy dla ${companyIds.length} firm. Łączny czas został podzielony pomiędzy firmy.`:'Wpis został zapisany.');
  }catch(err){
   alert(err.message);
  }
@@ -949,7 +971,18 @@ async function deleteQuickNote(note){
 
    <div className="card" style={{maxWidth:1000,marginTop:20}}>
     <div className="row between">
-     <div><h2 style={{marginBottom:4}}>Moje wpisy z wybranego dnia</h2><div className="muted">Data: {form.date}</div></div>
+     <div>
+      <h2 style={{marginBottom:8}}>Moje wpisy z wybranego dnia</h2>
+      <label style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',fontWeight:700}}>
+       Wybierz datę:
+       <input
+        type="date"
+        value={entriesDate}
+        onChange={e=>setEntriesDate(e.target.value)}
+        style={{maxWidth:190,margin:0}}
+       />
+      </label>
+     </div>
      <div style={{textAlign:'right'}}><b>Łączny czas</b><h2 style={{margin:0}}>{minToText(myDayTotalMinutes)}</h2></div>
     </div>
     {myDayEntries.length===0&&<p className="muted" style={{marginTop:20}}>Nie masz jeszcze żadnych wpisów z tego dnia.</p>}
