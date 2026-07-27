@@ -95,14 +95,17 @@ function inSelectedMonth(date){
  const quickNoteRecognitionRef=useRef(null);
  const quickNoteSpeechBaseRef=useRef('');
  const myDayEntries=useMemo(()=>{
-  return (data.workEntries||[])
-   .filter(entry=>{
-    const entryDate=String(entry.date||'').slice(0,10);
+  const workEntries=(data.workEntries||[])
+   .filter(entry=>entry.userId===user.id&&String(entry.date||'').slice(0,10)===entriesDate)
+   .map(entry=>({...entry,entryKind:'WORK'}));
 
-    return entry.userId===user.id && entryDate===entriesDate;
-   })
+  const extraOrders=(data.extraOrders||[])
+   .filter(entry=>entry.userId===user.id&&String(entry.date||'').slice(0,10)===entriesDate)
+   .map(entry=>({...entry,entryKind:'EXTRA',travelMinutes:Number(entry.travelCost||0)}));
+
+  return [...workEntries,...extraOrders]
    .sort((a,b)=>new Date(b.createdAt||b.date)-new Date(a.createdAt||a.date));
- },[data.workEntries,user.id,entriesDate]);
+ },[data.workEntries,data.extraOrders,user.id,entriesDate]);
 
  const myDayTotalMinutes=useMemo(()=>{
   // Wpis grupowy tworzy osobny rekord dla każdej firmy, ale czas pracy
@@ -1013,7 +1016,7 @@ async function deleteQuickNote(note){
     </div>
     {myDayEntries.length===0&&<p className="muted" style={{marginTop:20}}>Nie masz jeszcze żadnych wpisów z tego dnia.</p>}
     {myDayEntries.length>0&&<div className="tableWrap" style={{marginTop:20}}><table><thead><tr><th>Firma</th><th>Rodzaj pracy</th><th>Opis</th><th>Czas pracy</th><th>Dojazd</th><th>Numer zlecenia</th><th>Akcje</th></tr></thead><tbody>
-     {myDayEntries.map(entry=><tr key={entry.id}><td>{workEntryCompanyName(entry)}</td><td>{entry.type||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{minToText(Number(entry.minutes||0))}</td><td>{minToText(Number(entry.travelMinutes||0))}</td><td>{entry.orderNumber||'-'}</td><td><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="light" onClick={()=>startEditWorkEntry(entry)}>Edytuj</button><button type="button" className="red" onClick={()=>deleteWorkEntry(entry)}>Usuń</button></div></td></tr>)}
+     {myDayEntries.map(entry=><tr key={`${entry.entryKind}-${entry.id}`}><td>{workEntryCompanyName(entry)}</td><td>{entry.entryKind==='EXTRA'?<><span className="pill">Zlecenie dodatkowe</span><br/>{entry.type||'-'}</>:entry.type||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{minToText(Number(entry.minutes||0))}</td><td>{entry.entryKind==='EXTRA'?'-':minToText(Number(entry.travelMinutes||0))}</td><td>{entry.orderNumber||'-'}</td><td><div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{entry.entryKind==='WORK'&&<button type="button" className="light" onClick={()=>startEditWorkEntry(entry)}>Edytuj</button>}<button type="button" className="red" onClick={()=>entry.entryKind==='EXTRA'?deleteExtraOrder(entry):deleteWorkEntry(entry)}>Usuń</button></div></td></tr>)}
     </tbody></table></div>}
    </div>
   </div>
