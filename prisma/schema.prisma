@@ -55,6 +55,12 @@ model Company {
   travelCost           Decimal       @default(0)
   extraCost            Decimal       @default(0)
   extraCostDescription String?
+  latitude             Float?
+  longitude            Float?
+  regon                 String?
+  krs                   String?
+  dataSource            String?
+  geocodedAt            DateTime?
   assignedUserId       String?
   assignedUser         User?         @relation(fields: [assignedUserId], references: [id])
   workEntries          WorkEntry[]
