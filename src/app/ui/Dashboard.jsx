@@ -78,13 +78,13 @@ function inSelectedMonth(date){
  const [selectedCompany,setSelectedCompany]=useState(null);
  const [editUser,setEditUser]=useState(null);
  const [ai,setAi]=useState('');
- const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
+ const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
  const [entriesDate,setEntriesDate]=useState(new Date().toISOString().slice(0,10));
  const [workCompanySearch,setWorkCompanySearch]=useState('');
  const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',type:'inne',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:'',status:'OPEN'});
  const [shopOrder,setShopOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',margin:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',status:'OPEN'});
  const [training,setTraining]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',time:'1:00',unitAmount:'109',peopleCount:'1',netAmount:'109',extraCostDescription:'',description:'',status:'DONE'});
- const [editingWorkEntry,setEditingWorkEntry]=useState(null);
+ const [editingEntry,setEditingEntry]=useState(null);
  const [quickNotesOpen,setQuickNotesOpen]=useState(false);
  const [quickNotes,setQuickNotes]=useState([]);
  const [quickNoteContent,setQuickNoteContent]=useState('');
@@ -101,7 +101,7 @@ function inSelectedMonth(date){
 
   const extraOrders=(data.extraOrders||[])
    .filter(entry=>entry.userId===user.id&&String(entry.date||'').slice(0,10)===entriesDate)
-   .map(entry=>({...entry,entryKind:'EXTRA',travelMinutes:Number(entry.travelCost||0)}));
+   .map(entry=>({...entry,entryKind:'EXTRA',travelMinutes:Number(entry.travelMinutes||0)}));
 
   return [...workEntries,...extraOrders]
    .sort((a,b)=>new Date(b.createdAt||b.date)-new Date(a.createdAt||a.date));
@@ -130,7 +130,7 @@ function inSelectedMonth(date){
 
    if(countedGroups.has(groupKey))return sum;
    countedGroups.add(groupKey);
-   return sum+Number(entry.minutes||0);
+   return sum+Number(entry.minutes||0)+Number(entry.travelMinutes||0);
   },0);
  },[myDayEntries]);
 
@@ -164,9 +164,9 @@ const orders=data.extraOrders.filter(o=>o.companyId===c.id && inSelectedMonth(o.
   const normalOrders=orders.filter(o=>String(o.type||'').toLowerCase()!=='szkolenie wstępne');
   const shopOrders=normalOrders.filter(o=>String(o.type||'').toLowerCase()==='zlecenie sklep');
   const regularOrders=normalOrders.filter(o=>String(o.type||'').toLowerCase()!=='zlecenie sklep');
-  const workMinutes=entries.reduce((s,e)=>s+Number(e.minutes||0),0);
-  const normalOrderMinutes=normalOrders.reduce((s,o)=>s+Number(o.minutes||0),0);
-  const trainingMinutes=trainings.reduce((s,o)=>s+Number(o.minutes||0),0);
+  const workMinutes=entries.reduce((s,e)=>s+Number(e.minutes||0)+Number(e.travelMinutes||0),0);
+  const normalOrderMinutes=normalOrders.reduce((s,o)=>s+Number(o.minutes||0)+Number(o.travelMinutes||0),0);
+  const trainingMinutes=trainings.reduce((s,o)=>s+Number(o.minutes||0)+Number(o.travelMinutes||0),0);
   const minutes=workMinutes+normalOrderMinutes+trainingMinutes;
   const netMonthly=Number(c.netAmount||0);
   const hasMonthlyService=netMonthly>0 || String(c.billingType||'').toUpperCase()==='MONTHLY';
@@ -306,12 +306,14 @@ return {
   const resolvedType=form.type==='własna czynność'?customType:form.type;
   const extraCost=Number(form.additionalCost||0);
   const netAmount=Number(form.netAmount||0);
+  const travelMinutes=form.travelEnabled?parseTime(form.travelTime):0;
 
   if(!form.date)return alert('Wybierz datę.');
   if(selectedIds.length===0&&manualCompanyNames.length===0)return alert('Wybierz przynajmniej jedną firmę albo wpisz nową firmę.');
   if(!resolvedType)return alert('Wybierz czynność albo wpisz nazwę własnej czynności.');
   if(!description)return alert('Wpisz krótki opis wykonywanych prac.');
   if(minutes<=0)return alert('Wpisz prawidłowy czas pracy.');
+  if(form.travelEnabled&&travelMinutes<=0)return alert('Wpisz prawidłowy czas dojazdu.');
 
   const duplicatedManual=manualCompanyNames.find(name=>
    (data.companies||[]).some(c=>normalizeCompanyName(c.name)===normalizeCompanyName(name))
@@ -341,6 +343,7 @@ return {
   }
 
   const dividedMinutes=splitMinutesBetweenCompanies(minutes,companyIds.length);
+  const dividedTravelMinutes=splitMinutesBetweenCompanies(travelMinutes,companyIds.length);
 
   if(form.billingMode==='MONTHLY'){
    await Promise.all(companyIds.map((companyId,index)=>jsonFetch('/api/work',{
@@ -354,7 +357,7 @@ return {
      title:description,
      description,
      minutes:dividedMinutes[index],
-     travelMinutes:parseTime(form.travelTime),
+     travelMinutes:dividedTravelMinutes[index],
      additionalCost:0,
      additionalCostDescription:null
     })
@@ -373,6 +376,7 @@ return {
      description,
      netAmount,
      travelCost:0,
+     travelMinutes:dividedTravelMinutes[index],
      extraCost,
      extraCostDescription:costDescription,
      minutes:dividedMinutes[index],
@@ -394,6 +398,7 @@ return {
    description:'',
    time:'',
    travelTime:'',
+   travelEnabled:false,
    billingMode:'MONTHLY',
    additionalCost:'',
    extraCostName:'',
@@ -408,8 +413,8 @@ return {
   alert(err.message);
  }
 }
- function startEditWorkEntry(entry){
- setEditingWorkEntry(entry);
+ function startEditEntry(entry){
+ setEditingEntry(entry);
 
  setForm({
   date:String(entry.date||'').slice(0,10),
@@ -420,101 +425,69 @@ return {
   type:entry.type||'inne',
   customType:'',
   title:entry.title||'',
-  description:entry.description||'',
+  description:entry.description||entry.title||'',
   time:minutesToInput(entry.minutes),
   travelTime:minutesToInput(entry.travelMinutes),
-  billingMode:'MONTHLY',
-  additionalCost:String(entry.additionalCost||''),
-  extraCostName:'',
-  additionalCostDescription:entry.additionalCostDescription||'',
+  travelEnabled:Number(entry.travelMinutes||0)>0,
+  billingMode:entry.entryKind==='EXTRA'?'ONE_TIME':'MONTHLY',
+  additionalCost:entry.entryKind==='EXTRA'?String(entry.extraCost||''):String(entry.additionalCost||''),
+  extraCostName:entry.entryKind==='EXTRA'?(entry.extraCostDescription||''):'',
+  additionalCostDescription:entry.entryKind==='WORK'?(entry.additionalCostDescription||''):'',
   orderNumber:entry.orderNumber||'',
-  netAmount:''
+  netAmount:entry.entryKind==='EXTRA'?String(entry.netAmount||''):''
  });
 
- window.scrollTo({
-  top:0,
-  behavior:'smooth'
- });
+ window.scrollTo({top:0,behavior:'smooth'});
 }
 
-function cancelEditWorkEntry(){
- setEditingWorkEntry(null);
-
+function cancelEditEntry(){
+ setEditingEntry(null);
  setForm({
-  date:new Date().toISOString().slice(0,10),
-  companyId:'',
-  selectedCompanyIds:[],
-  manualCompanyNames:[],
-  newCompanyName:'',
-  type:'dokumentacja',
-  customType:'',
-  title:'',
-  description:'',
-  time:'',
-  travelTime:'',
-  billingMode:'MONTHLY',
-  additionalCost:'',
-  extraCostName:'',
-  additionalCostDescription:'',
-  orderNumber:'',
-  netAmount:''
+  date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',
+  type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',
+  additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''
  });
 }
 
-async function saveEditedWorkEntry(){
- if(!editingWorkEntry)return;
-
+async function saveEditedEntry(){
+ if(!editingEntry)return;
  try{
-  if(!form.companyId){
-   return alert('Wybierz firmę.');
+  if(!form.companyId)return alert('Wybierz firmę.');
+  const minutes=parseTime(form.time);
+  const travelMinutes=form.travelEnabled?parseTime(form.travelTime):0;
+  if(minutes<=0)return alert('Wpisz prawidłowy czas pracy.');
+  if(form.travelEnabled&&travelMinutes<=0)return alert('Wpisz prawidłowy czas dojazdu.');
+
+  const common={
+   date:form.date,companyId:form.companyId,orderNumber:form.orderNumber||null,type:form.type||'inne',
+   title:form.description?.trim()||form.type||'Wpis pracy',description:form.description||null,
+   minutes,travelMinutes
+  };
+
+  if(editingEntry.entryKind==='EXTRA'){
+   await jsonFetch('/api/extra-orders/'+editingEntry.id,{
+    method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+     ...common,netAmount:Number(form.netAmount||0),travelCost:0,extraCost:Number(form.additionalCost||0),
+     extraCostDescription:String(form.extraCostName||'').trim()||null,status:editingEntry.status||'DONE'
+    })
+   });
+  }else{
+   await jsonFetch('/api/work/'+editingEntry.id,{
+    method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+     ...common,additionalCost:Number(form.additionalCost||0),additionalCostDescription:form.additionalCostDescription||null
+    })
+   });
   }
 
-  if(!form.time){
-   return alert('Wpisz czas pracy.');
-  }
-
-  await jsonFetch('/api/work/'+editingWorkEntry.id,{
-   method:'PUT',
-   headers:{
-    'Content-Type':'application/json'
-   },
-   body:JSON.stringify({
-    date:form.date,
-    companyId:form.companyId,
-    orderNumber:form.orderNumber||null,
-    type:form.type||'inne',
-    title:form.description?.trim()||form.type||'Wpis pracy',
-    description:form.description||null,
-    minutes:parseTime(form.time),
-    travelMinutes:parseTime(form.travelTime),
-    additionalCost:Number(form.additionalCost||0),
-    additionalCostDescription:form.additionalCostDescription||null
-   })
-  });
-
-  setEditingWorkEntry(null);
-
+  setEditingEntry(null);
   setForm({
-   date:form.date,
-   companyId:'',
-   newCompanyName:'',
-   type:'dokumentacja',
-   title:'',
-   description:'',
-   time:'',
-   travelTime:'',
-   additionalCost:'',
-   additionalCostDescription:'',
-   orderNumber:'',
-   netAmount:''
+   date:form.date,companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',
+   title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',additionalCost:'',extraCostName:'',
+   additionalCostDescription:'',orderNumber:'',netAmount:''
   });
-
   await load();
-
   alert('Wpis został zaktualizowany.');
- }catch(err){
-  alert(err.message);
- }
+ }catch(err){alert(err.message);}
 }
 
 async function deleteWorkEntry(entry){
@@ -531,8 +504,8 @@ async function deleteWorkEntry(entry){
    method:'DELETE'
   });
 
-  if(editingWorkEntry?.id===entry.id){
-   cancelEditWorkEntry();
+  if(editingEntry?.id===entry.id){
+   cancelEditEntry();
   }
 
   await load();
@@ -837,7 +810,7 @@ async function deleteQuickNote(note){
      </button>
     </div>
 
-    {editingWorkEntry&&
+    {editingEntry&&
      <div className="warnBox" style={{marginBottom:16}}>
       Edytujesz istniejący wpis. Po wprowadzeniu zmian kliknij „Zapisz zmiany”.
      </div>
@@ -848,7 +821,7 @@ async function deleteQuickNote(note){
       <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
      </Field>
 
-     {!editingWorkEntry&&<Field label="2. Wybór firmy lub kilku firm">
+     {!editingEntry&&<Field label="2. Wybór firmy lub kilku firm">
       <div>
        <input
         placeholder="Szukaj firmy..."
@@ -896,14 +869,14 @@ async function deleteQuickNote(note){
       </div>
      </Field>}
 
-     {editingWorkEntry&&<Field label="2. Firma">
+     {editingEntry&&<Field label="2. Firma">
       <select value={form.companyId} onChange={e=>setForm({...form,companyId:e.target.value})}>
        <option value="">Wybierz firmę</option>
        {data.companies.filter(c=>c.status!=='INACTIVE').map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
      </Field>}
 
-     {!editingWorkEntry&&<Field label="3. Wpisz firmę ręcznie, jeżeli nie ma jej na liście">
+     {!editingEntry&&<Field label="3. Wpisz firmę ręcznie, jeżeli nie ma jej na liście">
       <div>
        <input
         placeholder="Nazwa nowej firmy — zatwierdź Enterem"
@@ -958,10 +931,19 @@ async function deleteQuickNote(note){
      </Field>
 
      <Field label="7. Czas pracy">
-      <input placeholder="np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/>
+      <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:12,alignItems:'center'}}>
+       <input placeholder="np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/>
+       <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}}>
+        <input type="checkbox" checked={!!form.travelEnabled} onChange={e=>setForm({...form,travelEnabled:e.target.checked,travelTime:e.target.checked?form.travelTime:''})} style={{width:'auto'}}/>
+        ✅ Dojazd
+       </label>
+      </div>
+      {form.travelEnabled&&<div style={{marginTop:10}}>
+       <input placeholder="Czas dojazdu, np. 0:45, 45m" value={form.travelTime} onChange={e=>setForm({...form,travelTime:e.target.value})}/>
+      </div>}
      </Field>
 
-     {!editingWorkEntry&&<div className="card" style={{margin:0,padding:18}}>
+     {!editingEntry&&<div className="card" style={{margin:0,padding:18}}>
       <h2 style={{marginTop:0}}>8. Typ rozliczenia</h2>
       <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
        <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
@@ -975,7 +957,7 @@ async function deleteQuickNote(note){
       </div>
      </div>}
 
-     {!editingWorkEntry&&form.billingMode==='ONE_TIME'&&<>
+     {(!editingEntry||editingEntry.entryKind==='EXTRA')&&form.billingMode==='ONE_TIME'&&<>
       <Field label="9. Kwota netto za zlecenie">
        <input type="number" min="0" step="0.01" placeholder="np. 1500" value={form.netAmount} onChange={e=>setForm({...form,netAmount:e.target.value})}/>
       </Field>
@@ -987,13 +969,13 @@ async function deleteQuickNote(note){
       </Field>
      </>}
 
-     {!editingWorkEntry&&<button type="button" className="orange" onClick={addWork}>
+     {!editingEntry&&<button type="button" className="orange" onClick={addWork}>
       Dodaj wpis
      </button>}
 
-     {editingWorkEntry&&<div className="row" style={{marginTop:12}}>
-      <button type="button" className="orange" onClick={saveEditedWorkEntry}>Zapisz zmiany</button>
-      <button type="button" className="light" onClick={cancelEditWorkEntry}>Anuluj edycję</button>
+     {editingEntry&&<div className="row" style={{marginTop:12}}>
+      <button type="button" className="orange" onClick={saveEditedEntry}>Zapisz zmiany</button>
+      <button type="button" className="light" onClick={cancelEditEntry}>Anuluj edycję</button>
      </div>}
     </div>
    </div>
@@ -1016,7 +998,7 @@ async function deleteQuickNote(note){
     </div>
     {myDayEntries.length===0&&<p className="muted" style={{marginTop:20}}>Nie masz jeszcze żadnych wpisów z tego dnia.</p>}
     {myDayEntries.length>0&&<div className="tableWrap" style={{marginTop:20}}><table><thead><tr><th>Firma</th><th>Rodzaj pracy</th><th>Opis</th><th>Czas pracy</th><th>Dojazd</th><th>Numer zlecenia</th><th>Akcje</th></tr></thead><tbody>
-     {myDayEntries.map(entry=><tr key={`${entry.entryKind}-${entry.id}`}><td>{workEntryCompanyName(entry)}</td><td>{entry.entryKind==='EXTRA'?<><span className="pill">Zlecenie dodatkowe</span><br/>{entry.type||'-'}</>:entry.type||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{minToText(Number(entry.minutes||0))}</td><td>{entry.entryKind==='EXTRA'?'-':minToText(Number(entry.travelMinutes||0))}</td><td>{entry.orderNumber||'-'}</td><td><div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{entry.entryKind==='WORK'&&<button type="button" className="light" onClick={()=>startEditWorkEntry(entry)}>Edytuj</button>}<button type="button" className="red" onClick={()=>entry.entryKind==='EXTRA'?deleteExtraOrder(entry):deleteWorkEntry(entry)}>Usuń</button></div></td></tr>)}
+     {myDayEntries.map(entry=><tr key={`${entry.entryKind}-${entry.id}`}><td>{workEntryCompanyName(entry)}</td><td>{entry.entryKind==='EXTRA'?<><span className="pill">Zlecenie dodatkowe</span><br/>{entry.type||'-'}</>:entry.type||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{minToText(Number(entry.minutes||0))}</td><td>{Number(entry.travelMinutes||0)>0?minToText(Number(entry.travelMinutes||0)):'-'}</td><td>{entry.orderNumber||'-'}</td><td><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="light" onClick={()=>startEditEntry(entry)}>Edytuj</button><button type="button" className="red" onClick={()=>entry.entryKind==='EXTRA'?deleteExtraOrder(entry):deleteWorkEntry(entry)}>Usuń</button></div></td></tr>)}
     </tbody></table></div>}
    </div>
   </div>
@@ -1617,7 +1599,7 @@ function SummaryTable({rows, selectedMonth, previousMap=new Map(), onDetails}){
 function Field({label,children}){return <label className="field"><span>{label}</span>{children}</label>}
 function CompanyDetails({company,users,orders,onSubmit,onDelete}){
  const missing=['address','contactPerson','phone','email'].filter(k=>!company[k]);
- return <form id="companyEditForm" className="detailBox" onSubmit={onSubmit}><div className="row between"><h2>Dane firmy: {company.name}</h2><button type="button" className="red" onClick={onDelete}>🗑️ Usuń firmę</button></div>{missing.length>0&&<div className="warnBox">Brakuje danych: {missing.join(', ')}. Możesz wpisać NIP i kliknąć „Uzupełnij puste dane z NIP”.</div>}<div className="companyInfo"><div className="infoBox"><b>Kontakt</b>{company.contactPerson||'brak danych'}</div><div className="infoBox"><b>Email</b>{company.email||'brak danych'}</div><div className="infoBox"><b>Telefon</b>{company.phone||'brak danych'}</div><div className="infoBox"><b>Adres</b>{company.address||'brak danych'}</div><div className="infoBox"><b>Pracownik</b>{company.assignedUser?.name||'nie przypisano'}</div><div className="infoBox"><b>Status firmy</b><span className={'status '+company.status}></span>{company.status}</div></div><div className="grid2"><Field label="Nazwa firmy"><input name="name" defaultValue={company.name}/></Field><Field label="NIP"><input name="nip" defaultValue={company.nip||''} placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/></Field><Field label="Adres"><input name="address" defaultValue={company.address||''} placeholder="Adres"/></Field><Field label="Osoba kontaktowa"><input name="contactPerson" defaultValue={company.contactPerson||''} placeholder="Osoba kontaktowa"/></Field><Field label="Telefon"><input name="phone" defaultValue={company.phone||''} placeholder="Telefon"/></Field><Field label="Email"><input name="email" defaultValue={company.email||''} placeholder="Email"/></Field><Field label="Typ obsługi"><input name="serviceType" defaultValue={company.serviceType||''} placeholder="np. BHP, stała obsługa"/></Field><Field label="Przypisany pracownik"><select name="assignedUserId" defaultValue={company.assignedUserId||''}><option value="">Brak pracownika</option>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field><Field label="Status firmy"><select name="status" defaultValue={company.status}><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select></Field><Field label="Typ rozliczenia"><select name="billingType" defaultValue={company.billingType}><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select></Field><Field label="Kwota netto miesięcznie"><input name="netAmount" defaultValue={company.netAmount||''} placeholder="Kwota netto miesięcznie"/></Field><Field label="Koszt dojazdów"><input name="travelCost" defaultValue={company.travelCost||''} placeholder="Koszt dojazdów"/></Field><Field label="Dodatkowe koszty"><input name="extraCost" defaultValue={company.extraCost||''} placeholder="Dodatkowe koszty"/></Field><Field label="Opis dodatkowych kosztów / uwagi"><input name="extraCostDescription" defaultValue={company.extraCostDescription||''} placeholder="np. ratownik medyczny, PO, mail po angielsku"/></Field><Field label="Szerokość geograficzna"><input name="latitude" type="number" step="any" defaultValue={company.latitude??''} placeholder="np. 50.033"/></Field><Field label="Długość geograficzna"><input name="longitude" type="number" step="any" defaultValue={company.longitude??''} placeholder="np. 20.217"/></Field></div><div className="row"><button type="button" className="light" onClick={e=>autofillByNip(e.currentTarget.form)}>Uzupełnij puste dane z NIP</button><button className="orange">Zapisz zmiany firmy</button></div>{orders?.length>0&&<div className="card"><h3>Zlecenia dodatkowe tej firmy</h3><table><thead><tr><th>Data</th><th>Nazwa</th><th>Czas</th><th>Kwota</th><th>Koszty</th><th>Koszt czasu</th><th>Status</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td>{String(o.date).slice(0,10)}</td><td>{o.title}</td><td>{minToText(Number(o.minutes||0))}</td><td>{money(o.netAmount)}</td><td>{money(Number(o.travelCost||0)+Number(o.extraCost||0))}</td><td>{money((Number(o.minutes||0)/60)*250)}</td><td>{o.status}</td></tr>)}</tbody></table></div>}</form>}
+ return <form id="companyEditForm" className="detailBox" onSubmit={onSubmit}><div className="row between"><h2>Dane firmy: {company.name}</h2><button type="button" className="red" onClick={onDelete}>🗑️ Usuń firmę</button></div>{missing.length>0&&<div className="warnBox">Brakuje danych: {missing.join(', ')}. Możesz wpisać NIP i kliknąć „Uzupełnij puste dane z NIP”.</div>}<div className="companyInfo"><div className="infoBox"><b>Kontakt</b>{company.contactPerson||'brak danych'}</div><div className="infoBox"><b>Email</b>{company.email||'brak danych'}</div><div className="infoBox"><b>Telefon</b>{company.phone||'brak danych'}</div><div className="infoBox"><b>Adres</b>{company.address||'brak danych'}</div><div className="infoBox"><b>Pracownik</b>{company.assignedUser?.name||'nie przypisano'}</div><div className="infoBox"><b>Status firmy</b><span className={'status '+company.status}></span>{company.status}</div></div><div className="grid2"><Field label="Nazwa firmy"><input name="name" defaultValue={company.name}/></Field><Field label="NIP"><input name="nip" defaultValue={company.nip||''} placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/></Field><Field label="Adres"><input name="address" defaultValue={company.address||''} placeholder="Adres"/></Field><Field label="Osoba kontaktowa"><input name="contactPerson" defaultValue={company.contactPerson||''} placeholder="Osoba kontaktowa"/></Field><Field label="Telefon"><input name="phone" defaultValue={company.phone||''} placeholder="Telefon"/></Field><Field label="Email"><input name="email" defaultValue={company.email||''} placeholder="Email"/></Field><Field label="Typ obsługi"><input name="serviceType" defaultValue={company.serviceType||''} placeholder="np. BHP, stała obsługa"/></Field><Field label="Przypisany pracownik"><select name="assignedUserId" defaultValue={company.assignedUserId||''}><option value="">Brak pracownika</option>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field><Field label="Status firmy"><select name="status" defaultValue={company.status}><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select></Field><Field label="Typ rozliczenia"><select name="billingType" defaultValue={company.billingType}><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select></Field><Field label="Kwota netto miesięcznie"><input name="netAmount" defaultValue={company.netAmount||''} placeholder="Kwota netto miesięcznie"/></Field><Field label="Koszt dojazdów"><input name="travelCost" defaultValue={company.travelCost||''} placeholder="Koszt dojazdów"/></Field><Field label="Dodatkowe koszty"><input name="extraCost" defaultValue={company.extraCost||''} placeholder="Dodatkowe koszty"/></Field><Field label="Opis dodatkowych kosztów / uwagi"><input name="extraCostDescription" defaultValue={company.extraCostDescription||''} placeholder="np. ratownik medyczny, PO, mail po angielsku"/></Field><Field label="Szerokość geograficzna"><input name="latitude" type="number" step="any" defaultValue={company.latitude??''} placeholder="np. 50.033"/></Field><Field label="Długość geograficzna"><input name="longitude" type="number" step="any" defaultValue={company.longitude??''} placeholder="np. 20.217"/></Field></div><div className="row"><button type="button" className="light" onClick={e=>autofillByNip(e.currentTarget.form)}>Uzupełnij puste dane z NIP</button><button className="orange">Zapisz zmiany firmy</button></div>{orders?.length>0&&<div className="card"><h3>Zlecenia dodatkowe tej firmy</h3><table><thead><tr><th>Data</th><th>Nazwa</th><th>Czas</th><th>Dojazd</th><th>Kwota</th><th>Koszty</th><th>Koszt czasu</th><th>Status</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td>{String(o.date).slice(0,10)}</td><td>{o.title}</td><td>{minToText(Number(o.minutes||0))}</td><td>{Number(o.travelMinutes||0)>0?minToText(Number(o.travelMinutes||0)):'-'}</td><td>{money(o.netAmount)}</td><td>{money(Number(o.travelCost||0)+Number(o.extraCost||0))}</td><td>{money(((Number(o.minutes||0)+Number(o.travelMinutes||0))/60)*250)}</td><td>{o.status}</td></tr>)}</tbody></table></div>}</form>}
 function InitialTrainingsPanel({data,training,setTraining,addInitialTraining,deleteExtraOrder}){const people=Number(training.peopleCount||0);const unit=Number(training.unitAmount||0);const autoTotal=people*unit;const trainings=(data.extraOrders||[]).filter(o=>String(o.type||'').toLowerCase()==='szkolenie wstępne');return <div className="panel"><h1>Szkolenia wstępne</h1><form className="card" onSubmit={addInitialTraining}><h2>Dodaj szkolenie wstępne</h2><div className="grid2"><Field label="Data szkolenia"><input type="date" value={training.date} onChange={e=>setTraining({...training,date:e.target.value})}/></Field><Field label="Firma z obsługi"><select value={training.companyId} onChange={e=>setTraining({...training,companyId:e.target.value,newCompanyName:e.target.value?'':training.newCompanyName})}><option value="">Wybierz firmę z listy</option>{data.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Albo dopisz nową firmę"><input placeholder="Nazwa nowej firmy, jeśli nie ma jej na liście" value={training.newCompanyName} onChange={e=>setTraining({...training,newCompanyName:e.target.value,companyId:e.target.value?training.companyId:''})}/></Field><Field label="Czas poświęcony na szkolenie"><input placeholder="domyślnie 1:00" value={training.time} onChange={e=>setTraining({...training,time:e.target.value})}/></Field><Field label="Kwota netto za osobę"><input type="number" placeholder="np. 109" value={training.unitAmount} onChange={e=>{const unitAmount=e.target.value;const peopleCount=Number(training.peopleCount||1);setTraining({...training,unitAmount,netAmount:String(Number(unitAmount||0)*peopleCount)})}}/></Field><Field label="Ilość osób na szkoleniu"><input type="number" min="1" placeholder="np. 5" value={training.peopleCount} onChange={e=>{const peopleCount=e.target.value;const unitAmount=Number(training.unitAmount||0);setTraining({...training,peopleCount,netAmount:String(unitAmount*Number(peopleCount||0))})}}/></Field><Field label="Wartość szkolenia — automatycznie albo wpisz ręcznie"><input
   name="netAmount"
   type="number"
@@ -1626,7 +1608,7 @@ function InitialTrainingsPanel({data,training,setTraining,addInitialTraining,del
   onChange={e=>setTraining({...training,netAmount:e.target.value})}
 /></Field><Field label="Status"><select value={training.status} onChange={e=>setTraining({...training,status:e.target.value})}><option value="DONE">wykonane</option><option value="OPEN">otwarte</option><option value="INVOICED">zafakturowane</option><option value="PAID">opłacone</option></select></Field><Field label="Opis kosztów dodatkowych"><input placeholder="np. materiały, sala, dojazd, ratownik" value={training.extraCostDescription} onChange={e=>setTraining({...training,extraCostDescription:e.target.value})}/></Field></div><Field label="Opis szkolenia"><textarea placeholder="np. szkolenie wstępne BHP dla nowych pracowników" value={training.description} onChange={e=>setTraining({...training,description:e.target.value})}/></Field><p className="muted">Po dodaniu szkolenie zostanie podpięte pod wybraną firmę. Kwota szkolenia będzie przychodem firmy, a czas szkolenia doliczy się do godzin w podsumowaniu.</p><button className="orange">Dodaj szkolenie</button></form><div className="card"><h2>Lista szkoleń wstępnych</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firma</th><th>Czas</th><th>Wartość szkolenia</th><th>Opis kosztów</th><th>Status</th><th>Akcje</th></tr></thead><tbody>{trainings.map(o=><tr key={o.id}><td>{String(o.date).slice(0,10)}</td><td>{o.company?.name||'-'}</td><td>{minToText(Number(o.minutes||0))}</td><td>{money(o.netAmount)}</td><td>{o.extraCostDescription||'-'}</td><td>{o.status}</td><td><button className="light iconBtn" onClick={()=>deleteExtraOrder(o)}>🗑️</button></td></tr>)}</tbody></table></div></div></div>}
 
-function ExtraOrdersPanel({data,order,setOrder,addExtraOrder,deleteExtraOrder}){return <div className="panel"><h1>Zlecenia dodatkowe</h1><form className="card" onSubmit={addExtraOrder}><h2>Dodaj zlecenie poza miesięczną obsługą</h2><div className="grid2"><Field label="Data zlecenia"><input type="date" value={order.date} onChange={e=>setOrder({...order,date:e.target.value})}/></Field><Field label="Firma"><select value={order.companyId} onChange={e=>setOrder({...order,companyId:e.target.value,newCompanyName:e.target.value?'':order.newCompanyName})}><option value="">Wybierz firmę</option>{data.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Albo wpisz nową firmę"><input placeholder="Nazwa nowej firmy, jeśli nie ma jej na liście" value={order.newCompanyName||''} onChange={e=>setOrder({...order,newCompanyName:e.target.value,companyId:e.target.value?'':order.companyId})}/></Field><Field label="Nazwa zlecenia"><input placeholder="np. Szkolenie robotnicze" value={order.title} onChange={e=>setOrder({...order,title:e.target.value})}/></Field><Field label="Typ zlecenia"><select value={order.type} onChange={e=>setOrder({...order,type:e.target.value})}>{orderTypes.map(t=><option key={t}>{t}</option>)}</select></Field><Field label="Numer zlecenia / PO"><input placeholder="opcjonalnie" value={order.orderNumber} onChange={e=>setOrder({...order,orderNumber:e.target.value})}/></Field><Field label="Status"><select value={order.status} onChange={e=>setOrder({...order,status:e.target.value})}><option value="OPEN">otwarte</option><option value="DONE">wykonane</option><option value="INVOICED">zafakturowane</option><option value="PAID">opłacone</option></select></Field><Field label="Czas poświęcony na zlecenie"><input placeholder="np. 4:00, 2h 30m, 150m" value={order.time} onChange={e=>setOrder({...order,time:e.target.value})}/></Field><Field label="Kwota netto za zlecenie"><input type="number" placeholder="np. 1500" value={order.netAmount} onChange={e=>setOrder({...order,netAmount:e.target.value})}/></Field><Field label="Koszt dojazdów"><input type="number" placeholder="np. 200" value={order.travelCost} onChange={e=>setOrder({...order,travelCost:e.target.value})}/></Field><Field label="Dodatkowe koszty"><input type="number" placeholder="np. ratownik 500" value={order.extraCost} onChange={e=>setOrder({...order,extraCost:e.target.value})}/></Field><Field label="Opis dodatkowych kosztów"><input placeholder="np. ratownik medyczny, sala, materiały" value={order.extraCostDescription} onChange={e=>setOrder({...order,extraCostDescription:e.target.value})}/></Field></div><Field label="Opis zlecenia"><textarea placeholder="Opis wykonania / uwagi" value={order.description} onChange={e=>setOrder({...order,description:e.target.value})}/></Field><button className="orange">Dodaj zlecenie</button></form><div className="card"><h2>Lista zleceń dodatkowych</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firma</th><th>Nazwa</th><th>Typ</th><th>Czas</th><th>Kwota</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk</th><th>Status</th><th>Akcje</th></tr></thead><tbody>{(data.extraOrders||[]).filter(o=>!['szkolenie wstępne','zlecenie sklep'].includes(String(o.type||'').toLowerCase())).map(o=>{const costs=Number(o.travelCost||0)+Number(o.extraCost||0);const timeCost=(Number(o.minutes||0)/60)*250;const profit=Number(o.netAmount||0)-costs-timeCost;return <tr key={o.id}><td>{String(o.date).slice(0,10)}</td><td>{o.company?.name||'-'}</td><td>{o.title}</td><td>{o.type}</td><td>{minToText(Number(o.minutes||0))}</td><td>{money(o.netAmount)}</td><td>{money(costs)}</td><td>{money(timeCost)}</td><td>{money(profit)}</td><td>{o.status}</td><td><button className="light iconBtn" onClick={()=>deleteExtraOrder(o)}>🗑️</button></td></tr>})}</tbody></table></div></div></div>}
+function ExtraOrdersPanel({data,order,setOrder,addExtraOrder,deleteExtraOrder}){return <div className="panel"><h1>Zlecenia dodatkowe</h1><form className="card" onSubmit={addExtraOrder}><h2>Dodaj zlecenie poza miesięczną obsługą</h2><div className="grid2"><Field label="Data zlecenia"><input type="date" value={order.date} onChange={e=>setOrder({...order,date:e.target.value})}/></Field><Field label="Firma"><select value={order.companyId} onChange={e=>setOrder({...order,companyId:e.target.value,newCompanyName:e.target.value?'':order.newCompanyName})}><option value="">Wybierz firmę</option>{data.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Albo wpisz nową firmę"><input placeholder="Nazwa nowej firmy, jeśli nie ma jej na liście" value={order.newCompanyName||''} onChange={e=>setOrder({...order,newCompanyName:e.target.value,companyId:e.target.value?'':order.companyId})}/></Field><Field label="Nazwa zlecenia"><input placeholder="np. Szkolenie robotnicze" value={order.title} onChange={e=>setOrder({...order,title:e.target.value})}/></Field><Field label="Typ zlecenia"><select value={order.type} onChange={e=>setOrder({...order,type:e.target.value})}>{orderTypes.map(t=><option key={t}>{t}</option>)}</select></Field><Field label="Numer zlecenia / PO"><input placeholder="opcjonalnie" value={order.orderNumber} onChange={e=>setOrder({...order,orderNumber:e.target.value})}/></Field><Field label="Status"><select value={order.status} onChange={e=>setOrder({...order,status:e.target.value})}><option value="OPEN">otwarte</option><option value="DONE">wykonane</option><option value="INVOICED">zafakturowane</option><option value="PAID">opłacone</option></select></Field><Field label="Czas poświęcony na zlecenie"><input placeholder="np. 4:00, 2h 30m, 150m" value={order.time} onChange={e=>setOrder({...order,time:e.target.value})}/></Field><Field label="Kwota netto za zlecenie"><input type="number" placeholder="np. 1500" value={order.netAmount} onChange={e=>setOrder({...order,netAmount:e.target.value})}/></Field><Field label="Koszt dojazdów"><input type="number" placeholder="np. 200" value={order.travelCost} onChange={e=>setOrder({...order,travelCost:e.target.value})}/></Field><Field label="Dodatkowe koszty"><input type="number" placeholder="np. ratownik 500" value={order.extraCost} onChange={e=>setOrder({...order,extraCost:e.target.value})}/></Field><Field label="Opis dodatkowych kosztów"><input placeholder="np. ratownik medyczny, sala, materiały" value={order.extraCostDescription} onChange={e=>setOrder({...order,extraCostDescription:e.target.value})}/></Field></div><Field label="Opis zlecenia"><textarea placeholder="Opis wykonania / uwagi" value={order.description} onChange={e=>setOrder({...order,description:e.target.value})}/></Field><button className="orange">Dodaj zlecenie</button></form><div className="card"><h2>Lista zleceń dodatkowych</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firma</th><th>Nazwa</th><th>Typ</th><th>Czas</th><th>Dojazd</th><th>Kwota</th><th>Koszty</th><th>Koszt czasu</th><th>Zysk</th><th>Status</th><th>Akcje</th></tr></thead><tbody>{(data.extraOrders||[]).filter(o=>!['szkolenie wstępne','zlecenie sklep'].includes(String(o.type||'').toLowerCase())).map(o=>{const costs=Number(o.travelCost||0)+Number(o.extraCost||0);const timeCost=((Number(o.minutes||0)+Number(o.travelMinutes||0))/60)*250;const profit=Number(o.netAmount||0)-costs-timeCost;return <tr key={o.id}><td>{String(o.date).slice(0,10)}</td><td>{o.company?.name||'-'}</td><td>{o.title}</td><td>{o.type}</td><td>{minToText(Number(o.minutes||0))}</td><td>{Number(o.travelMinutes||0)>0?minToText(Number(o.travelMinutes||0)):'-'}</td><td>{money(o.netAmount)}</td><td>{money(costs)}</td><td>{money(timeCost)}</td><td>{money(profit)}</td><td>{o.status}</td><td><button className="light iconBtn" onClick={()=>deleteExtraOrder(o)}>🗑️</button></td></tr>})}</tbody></table></div></div></div>}
 
 function ShopOrdersPanel({data,shopOrder,setShopOrder,addShopOrder,deleteExtraOrder}){
  const shopOrders=(data.extraOrders||[]).filter(o=>String(o.type||'').toLowerCase()==='zlecenie sklep');
@@ -1685,7 +1667,7 @@ function WorkerStatsPanel({ data }) {
   const workers = [...new Set((data.workEntries || []).map(e => workerName(e)))]
     .sort((a, b) => a.localeCompare(b, 'pl'));
 
-  const totalMinutes = entries.reduce((s, r) => s + Number(r.minutes || 0), 0);
+  const totalMinutes = entries.reduce((s, r) => s + Number(r.minutes || 0) + Number(r.travelMinutes || 0), 0);
   const totalEntries = entries.length;
   const totalExtraCosts = entries.reduce((s, r) => s + Number(r.additionalCost || 0), 0);
 
