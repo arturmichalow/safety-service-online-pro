@@ -357,10 +357,7 @@ return {
     })
    })));
   }else{
-   const costDescription=[
-    String(form.extraCostName||'').trim(),
-    String(form.additionalCostDescription||'').trim()
-   ].filter(Boolean).join(' — ')||null;
+   const costDescription=String(form.extraCostName||'').trim()||null;
 
    await Promise.all(companyIds.map((companyId,index)=>jsonFetch('/api/extra-orders',{
     method:'POST',
@@ -984,9 +981,6 @@ async function deleteQuickNote(note){
       </Field>
       <Field label="10. Nazwa dodatkowego kosztu">
        <input placeholder="np. ratownik medyczny" value={form.extraCostName||''} onChange={e=>setForm({...form,extraCostName:e.target.value})}/>
-      </Field>
-      <Field label="11. Opis dodatkowych kosztów">
-       <input placeholder="np. ratownik, wynajęcie sali, materiały" value={form.additionalCostDescription} onChange={e=>setForm({...form,additionalCostDescription:e.target.value})}/>
       </Field>
      </>}
 
