@@ -81,6 +81,11 @@ function inSelectedMonth(date){
  const [ai,setAi]=useState('');
  const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
  const [entriesDate,setEntriesDate]=useState(new Date().toISOString().slice(0,10));
+ const [teamSummaryMonth,setTeamSummaryMonth]=useState(new Date().toISOString().slice(0,7));
+ const [teamSummary,setTeamSummary]=useState({entries:[],companyIds:[]});
+ const [teamSummaryLoading,setTeamSummaryLoading]=useState(false);
+ const [teamSummaryError,setTeamSummaryError]=useState('');
+ const [teamSummaryCompany,setTeamSummaryCompany]=useState('ALL');
  const [workCompanySearch,setWorkCompanySearch]=useState('');
  const [order,setOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',type:'inne',description:'',netAmount:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',orderNumber:'',status:'OPEN'});
  const [shopOrder,setShopOrder]=useState({date:new Date().toISOString().slice(0,10),companyId:'',newCompanyName:'',title:'',description:'',netAmount:'',margin:'',travelCost:'',extraCost:'',extraCostDescription:'',time:'',status:'OPEN'});
@@ -158,6 +163,43 @@ function inSelectedMonth(date){
  load();
  loadQuickNotes();
 },[]);
+
+ useEffect(()=>{
+  if(tab!=='work')return;
+  let cancelled=false;
+
+  async function loadTeamSummary(){
+   try{
+    setTeamSummaryLoading(true);
+    setTeamSummaryError('');
+    const result=await jsonFetch(`/api/worker/team-summary?month=${encodeURIComponent(teamSummaryMonth)}`,{cache:'no-store'});
+    if(cancelled)return;
+    setTeamSummary({entries:Array.isArray(result.entries)?result.entries:[],companyIds:Array.isArray(result.companyIds)?result.companyIds:[]});
+   }catch(error){
+    if(cancelled)return;
+    setTeamSummary({entries:[],companyIds:[]});
+    setTeamSummaryError(error.message||'Nie udało się pobrać podsumowania zespołu.');
+   }finally{
+    if(!cancelled)setTeamSummaryLoading(false);
+   }
+  }
+
+  loadTeamSummary();
+  return()=>{cancelled=true};
+ },[tab,teamSummaryMonth,data.workEntries,data.extraOrders]);
+
+ const teamSummaryCompanies=useMemo(()=>{
+  const map=new Map();
+  (teamSummary.entries||[]).forEach(entry=>{
+   if(entry.companyId&&!map.has(entry.companyId))map.set(entry.companyId,entry.companyName||'-');
+  });
+  return [...map.entries()].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name,'pl'));
+ },[teamSummary.entries]);
+
+ const visibleTeamSummaryEntries=useMemo(()=>{
+  const rows=teamSummaryCompany==='ALL'?(teamSummary.entries||[]):(teamSummary.entries||[]).filter(entry=>entry.companyId===teamSummaryCompany);
+  return rows.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(a.companyName||'').localeCompare(String(b.companyName||''),'pl'));
+ },[teamSummary.entries,teamSummaryCompany]);
  const stats=useMemo(()=>{const rows=data.companies.map(c=>{
   const entries=data.workEntries.filter(w=>w.companyId===c.id && inSelectedMonth(w.date));
 const orders=data.extraOrders.filter(o=>o.companyId===c.id && inSelectedMonth(o.date));
@@ -1031,6 +1073,31 @@ async function deleteQuickNote(note){
     {myDayEntries.length===0&&<p className="muted" style={{marginTop:20}}>Nie masz jeszcze żadnych wpisów z tego dnia.</p>}
     {myDayEntries.length>0&&<div className="tableWrap" style={{marginTop:20}}><table><thead><tr><th>Firma</th><th>Rodzaj pracy</th><th>Opis</th><th>Czas pracy</th><th>Dojazd</th><th>Numer zlecenia</th><th>Akcje</th></tr></thead><tbody>
      {myDayEntries.map(entry=><tr key={`${entry.entryKind}-${entry.id}`}><td>{workEntryCompanyName(entry)}</td><td>{entry.entryKind==='EXTRA'?<><span className="pill">Zlecenie dodatkowe</span><br/>{entry.type||'-'}</>:entry.type||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{minToText(Number(entry.minutes||0))}</td><td>{Number(entry.travelMinutes||0)>0?minToText(Number(entry.travelMinutes||0)):'-'}</td><td>{entry.orderNumber||'-'}</td><td><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="light" onClick={()=>startEditEntry(entry)}>Edytuj</button><button type="button" className="red" onClick={()=>entry.entryKind==='EXTRA'?deleteExtraOrder(entry):deleteWorkEntry(entry)}>Usuń</button></div></td></tr>)}
+    </tbody></table></div>}
+   </div>
+   <div className="card" style={{maxWidth:1200,marginTop:20}}>
+    <div className="row between" style={{alignItems:'flex-end',gap:16,flexWrap:'wrap'}}>
+     <div>
+      <h2 style={{marginBottom:6}}>Czynności wykonane przez zespół dla obsługiwanych firm</h2>
+      <div className="muted">Widzisz wszystkie czynności z wybranego miesiąca wykonane przez innych pracowników dla firm, dla których Ty również masz przynajmniej jeden wpis.</div>
+     </div>
+     <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
+      <Field label="Miesiąc">
+       <input type="month" value={teamSummaryMonth} onChange={e=>{setTeamSummaryMonth(e.target.value);setTeamSummaryCompany('ALL')}} style={{minWidth:170}}/>
+      </Field>
+      <Field label="Firma">
+       <select value={teamSummaryCompany} onChange={e=>setTeamSummaryCompany(e.target.value)} style={{minWidth:240}}>
+        <option value="ALL">Wszystkie moje firmy</option>
+        {teamSummaryCompanies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}
+       </select>
+      </Field>
+     </div>
+    </div>
+    {teamSummaryLoading&&<p className="muted" style={{marginTop:18}}>Pobieram czynności zespołu...</p>}
+    {!teamSummaryLoading&&teamSummaryError&&<div className="warnBox" style={{marginTop:18}}>{teamSummaryError}</div>}
+    {!teamSummaryLoading&&!teamSummaryError&&visibleTeamSummaryEntries.length===0&&<p className="muted" style={{marginTop:18}}>Brak czynności zespołu dla firm, przy których pracowałeś w wybranym miesiącu.</p>}
+    {!teamSummaryLoading&&!teamSummaryError&&visibleTeamSummaryEntries.length>0&&<div className="tableWrap" style={{marginTop:18}}><table><thead><tr><th>Data</th><th>Firma</th><th>Pracownik</th><th>Czynność</th><th>Opis</th><th>Czas pracy</th><th>Dojazd</th><th>Rodzaj wpisu</th></tr></thead><tbody>
+     {visibleTeamSummaryEntries.map(entry=><tr key={entry.id}><td>{new Date(entry.date).toLocaleDateString('pl-PL')}</td><td><b>{entry.companyName}</b></td><td>{entry.workerName}</td><td>{entry.type||entry.title||'-'}</td><td style={{maxWidth:420,whiteSpace:'normal',wordBreak:'break-word'}}>{entry.description||entry.title||'-'}</td><td>{Number(entry.minutes||0)>0?minToText(Number(entry.minutes||0)):'-'}</td><td>{Number(entry.travelMinutes||0)>0?minToText(Number(entry.travelMinutes||0)):'-'}</td><td>{entry.source==='EXTRA'?'Zlecenie dodatkowe':'Obsługa miesięczna'}</td></tr>)}
     </tbody></table></div>}
    </div>
    <WorkerMissingAlert data={data} user={user} onOpen={()=>setTab('missingReport')}/>
