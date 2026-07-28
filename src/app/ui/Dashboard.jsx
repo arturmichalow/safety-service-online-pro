@@ -110,30 +110,12 @@ function inSelectedMonth(date){
  },[data.workEntries,data.extraOrders,user.id,entriesDate]);
 
  const myDayTotalMinutes=useMemo(()=>{
-  // Wpis grupowy tworzy osobny rekord dla każdej firmy, ale czas pracy
-  // powinien zostać policzony tylko raz. Rekordy utworzone razem mają
-  // te same dane i bardzo zbliżony czas utworzenia.
-  const countedGroups=new Set();
-
-  return myDayEntries.reduce((sum,entry)=>{
-   const createdAt=new Date(entry.createdAt||entry.date).getTime();
-   const createdBatch=Number.isFinite(createdAt)?Math.floor(createdAt/60000):0;
-   const groupKey=[
-    entry.userId||'',
-    String(entry.date||'').slice(0,10),
-    entry.type||'',
-    entry.title||'',
-    entry.description||'',
-    Number(entry.minutes||0),
-    Number(entry.travelMinutes||0),
-    entry.orderNumber||'',
-    createdBatch
-   ].join('|');
-
-   if(countedGroups.has(groupKey))return sum;
-   countedGroups.add(groupKey);
-   return sum+Number(entry.minutes||0)+Number(entry.travelMinutes||0);
-  },0);
+  // Przy wpisie dla kilku firm czas jest dzielony pomiędzy rekordy.
+  // Suma wszystkich rekordów daje rzeczywisty czas pracy pracownika.
+  return myDayEntries.reduce(
+   (sum,entry)=>sum+Number(entry.minutes||0)+Number(entry.travelMinutes||0),
+   0
+  );
  },[myDayEntries]);
 
  function workEntryCompanyName(entry){
