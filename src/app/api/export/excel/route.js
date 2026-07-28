@@ -70,6 +70,111 @@ export async function GET(req) {
     history.autoFilter = 'A1:H1';
     history.views = [{ state: 'frozen', ySplit: 1 }];
 
+    // Firmy, dla których pracownik wykonał co najmniej jeden wpis lub zlecenie
+    // w wybranym miesiącu. Na tej podstawie budujemy podgląd pracy całego zespołu.
+    const ownExtraOrders = await prisma.extraOrder.findMany({
+      where: {
+        userId: user.id,
+        date: { gte: start, lt: end }
+      },
+      select: { companyId: true }
+    });
+
+    const teamCompanyIds = [...new Set([
+      ...entries.map(entry => entry.companyId),
+      ...ownExtraOrders.map(order => order.companyId)
+    ].filter(Boolean))];
+
+    const [teamWorkEntries, teamExtraOrders] = teamCompanyIds.length
+      ? await Promise.all([
+          prisma.workEntry.findMany({
+            where: {
+              companyId: { in: teamCompanyIds },
+              date: { gte: start, lt: end }
+            },
+            include: { company: true, user: true },
+            orderBy: [{ date: 'asc' }, { createdAt: 'asc' }]
+          }),
+          prisma.extraOrder.findMany({
+            where: {
+              companyId: { in: teamCompanyIds },
+              date: { gte: start, lt: end }
+            },
+            include: { company: true, user: true },
+            orderBy: [{ date: 'asc' }, { createdAt: 'asc' }]
+          })
+        ])
+      : [[], []];
+
+    const teamRows = [
+      ...teamWorkEntries.map(entry => ({
+        date: entry.date,
+        company: entry.company?.name || '',
+        worker: entry.user?.name || entry.user?.email || '',
+        type: entry.type || entry.title || '',
+        description: entry.description || entry.notes || entry.title || '',
+        minutes: Number(entry.minutes || 0),
+        travelMinutes: Number(entry.travelMinutes || 0),
+        source: 'Obsługa miesięczna',
+        orderNumber: entry.orderNumber || ''
+      })),
+      ...teamExtraOrders.map(order => ({
+        date: order.date,
+        company: order.company?.name || '',
+        worker: order.user?.name || order.user?.email || 'Nieprzypisany',
+        type: order.type || order.title || '',
+        description: order.description || order.title || '',
+        minutes: Number(order.minutes || 0),
+        travelMinutes: Number(order.travelMinutes || 0),
+        source: 'Zlecenie dodatkowe',
+        orderNumber: order.orderNumber || ''
+      }))
+    ].sort((a, b) => {
+      const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      const companyDiff = a.company.localeCompare(b.company, 'pl');
+      if (companyDiff !== 0) return companyDiff;
+      return a.worker.localeCompare(b.worker, 'pl');
+    });
+
+    // Kolejność arkuszy: Moje wpisy -> Czynności zespołu -> Podsumowanie.
+    const teamSheet = wb.addWorksheet('Czynności zespołu');
+    teamSheet.columns = [
+      { header: 'Data', key: 'date', width: 16 },
+      { header: 'Firma', key: 'company', width: 32 },
+      { header: 'Pracownik', key: 'worker', width: 26 },
+      { header: 'Rodzaj pracy', key: 'type', width: 22 },
+      { header: 'Opis', key: 'description', width: 55 },
+      { header: 'Czas pracy', key: 'time', width: 16 },
+      { header: 'Minuty pracy', key: 'minutes', width: 16 },
+      { header: 'Dojazd', key: 'travel', width: 16 },
+      { header: 'Rodzaj wpisu', key: 'source', width: 22 },
+      { header: 'Numer zlecenia / PO', key: 'orderNumber', width: 22 }
+    ];
+
+    teamRows.forEach(row => {
+      teamSheet.addRow({
+        date: row.date.toISOString().slice(0, 10),
+        company: row.company,
+        worker: row.worker,
+        type: row.type,
+        description: row.description,
+        time: minToText(row.minutes),
+        minutes: row.minutes,
+        travel: row.travelMinutes ? minToText(row.travelMinutes) : '-',
+        source: row.source,
+        orderNumber: row.orderNumber
+      });
+    });
+
+    teamSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    teamSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF132734' } };
+    teamSheet.autoFilter = 'A1:J1';
+    teamSheet.views = [{ state: 'frozen', ySplit: 1 }];
+    teamSheet.getColumn('description').alignment = { wrapText: true, vertical: 'top' };
+    teamSheet.getColumn('worker').alignment = { wrapText: true, vertical: 'top' };
+    teamSheet.getColumn('source').alignment = { wrapText: true, vertical: 'top' };
+
     const totalMinutes = entries.reduce((sum, entry) => sum + Number(entry.minutes || 0), 0);
     const totalTravelMinutes = entries.reduce((sum, entry) => sum + Number(entry.travelMinutes || 0), 0);
     const companyCount = new Set(entries.map(entry => entry.companyId).filter(Boolean)).size;
