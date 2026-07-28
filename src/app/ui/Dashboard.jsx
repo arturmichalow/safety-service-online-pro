@@ -1976,8 +1976,8 @@ function AbsenceForm({data,user,reload,admin=false,defaultUserId='',editingAbsen
      <Field label="Liczba godzin dziennie"><input type="number" min="0.25" max="8" step="0.25" value={form.hours} onChange={e=>setForm({...form,hours:e.target.value})}/></Field>
     </div>
     <Field label="Opis / uwagi"><textarea value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opcjonalnie, np. urlop wypoczynkowy" style={{minHeight:90}}/></Field>
-    {!admin&&<div style={{background:'#eef5ff',borderLeft:'4px solid #3b82f6',padding:'11px 13px',borderRadius:8,marginTop:12}}>{['VACATION','SICK_LEAVE'].includes(form.type)?'Urlop i L4 są akceptowane automatycznie.':'To zgłoszenie będzie oczekiwać na akceptację administratora.'}</div>}
-    <div className="row" style={{justifyContent:'flex-end',marginTop:20}}><button type="button" className="light" onClick={closeModal} disabled={saving}>Anuluj</button><button className="orange" disabled={saving}>{saving?'Zapisywanie...':editingAbsence?'Zapisz zmiany':admin?'Dodaj i zaakceptuj':['VACATION','SICK_LEAVE'].includes(form.type)?'Dodaj i zaakceptuj':'Wyślij zgłoszenie'}</button></div>
+    {!admin&&<div style={{background:'#eef5ff',borderLeft:'4px solid #3b82f6',padding:'11px 13px',borderRadius:8,marginTop:12}}>Wszystkie rodzaje nieobecności są akceptowane automatycznie.</div>}
+    <div className="row" style={{justifyContent:'flex-end',marginTop:20}}><button type="button" className="light" onClick={closeModal} disabled={saving}>Anuluj</button><button className="orange" disabled={saving}>{saving?'Zapisywanie...':editingAbsence?'Zapisz zmiany':'Dodaj i zaakceptuj'}</button></div>
    </form>
   </div>}
  </>
