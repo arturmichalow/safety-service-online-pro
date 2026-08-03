@@ -79,7 +79,7 @@ function inSelectedMonth(date){
  const [selectedCompany,setSelectedCompany]=useState(null);
  const [editUser,setEditUser]=useState(null);
  const [ai,setAi]=useState('');
- const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
+ const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'szkolenie',customType:'',title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''});
  const [entriesDate,setEntriesDate]=useState(new Date().toISOString().slice(0,10));
  const [workCompanySearch,setWorkCompanySearch]=useState('');
  const [workCompanyPickerOpen,setWorkCompanyPickerOpen]=useState(false);
@@ -405,7 +405,7 @@ return {
    selectedCompanyIds:[],
    manualCompanyNames:[],
    newCompanyName:'',
-   type:'dokumentacja',
+   type:'szkolenie',
    customType:'',
    title:'',
    description:'',
@@ -457,7 +457,7 @@ function cancelEditEntry(){
  setEditingEntry(null);
  setForm({
   date:new Date().toISOString().slice(0,10),companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',
-  type:'dokumentacja',customType:'',title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',
+  type:'szkolenie',customType:'',title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',
   additionalCost:'',extraCostName:'',additionalCostDescription:'',orderNumber:'',netAmount:''
  });
 }
@@ -494,7 +494,7 @@ async function saveEditedEntry(){
 
   setEditingEntry(null);
   setForm({
-   date:form.date,companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'dokumentacja',customType:'',
+   date:form.date,companyId:'',selectedCompanyIds:[],manualCompanyNames:[],newCompanyName:'',type:'szkolenie',customType:'',
    title:'',description:'',time:'',travelTime:'',travelEnabled:false,billingMode:'MONTHLY',additionalCost:'',extraCostName:'',
    additionalCostDescription:'',orderNumber:'',netAmount:''
   });
