@@ -3,8 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import jsPDF from 'jspdf';
 import CompanyMap from './CompanyMap';
+import { DAILY_WORK_NORM_MINUTES, buildDailyWorkReport, resolveHourlyCost, costForMinutes, marginPercent } from '../../lib/calculations';
 
-const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['missingReport','Raport braków'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['account','Moje konto'],['pwa','PWA / telefon']];
+const modules=[['dashboard','Podsumowanie'],['clients','Klienci'],['employees','Baza pracowników'],['workerStats','Pracownicy'],['work','Panel pracownika'],['missingReport','Raport braków'],['extraOrders','Zlecenia dodatkowe'],['shopOrders','Zlecenia Sklep'],['ai','AI analiza rentowności'],['charts','Wykres czasu pracy'],['profitCharts','Wykres rentowności'],['import','Import danych'],['export','Eksporty'],['security','Bezpieczeństwo i konto'],['users','Użytkownicy i role'],['tutorial','Jak korzystać?'],['account','Moje konto'],['pwa','PWA / telefon']];
 const workTypes=['dokumentacja','audyt','szkolenie','dojazd','email','telefon','inne'];
 const orderTypes=['szkolenie','audyt','ratownik','pomiary oświetlenia','dokumentacja','konsultacje','wypadek','inne'];
 function minToText(m){const h=Math.floor((m||0)/60),mm=(m||0)%60;return `${h}h ${mm}m`}
@@ -55,7 +56,7 @@ function splitMinutesBetweenCompanies(totalMinutes, companyCount) {
 }
 function getShopMargin(o){const m=String(o.description||'').match(/\[MARZA_SKLEP:([^\]]+)\]/);return m?Number(String(m[1]).replace(',','.').replace(/[^0-9.-]/g,'')):Number(o.netAmount||0)}
 function cleanShopDescription(o){return String(o.description||'').replace(/\s*\[MARZA_SKLEP:[^\]]+\]\s*/,'').trim()}
-function has(user,key){return user.role==='ADMIN'||key==='missingReport'||user.permissions?.[key]}
+function has(user,key){return user.role==='ADMIN'||key==='missingReport'||key==='tutorial'||user.permissions?.[key]}
 async function jsonFetch(url,opts){const r=await fetch(url,opts);let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'Błąd zapisu');return j}
 async function nipLookup(nip){const clean=String(nip||'').replace(/\D/g,'');if(clean.length!==10)return null;const r=await fetch('/api/nip/'+clean,{cache:'no-store'});const j=await r.json();return r.ok&&j?.name?j:null}
 async function autofillByNip(formEl){try{const nip=formEl?.elements?.nip?.value;if(!nip)return;const d=await nipLookup(nip);if(!d)return;const hasEmpty=['name','address','contactPerson','phone','email'].some(k=>formEl.elements[k]&&!formEl.elements[k].value);if(!hasEmpty)return;if(formEl.elements.name&&!formEl.elements.name.value)formEl.elements.name.value=d.name||'';if(formEl.elements.address&&!formEl.elements.address.value)formEl.elements.address.value=d.address||'';if(formEl.elements.nip&&!formEl.elements.nip.value)formEl.elements.nip.value=d.nip||'';}catch(e){console.warn(e)}}
@@ -164,9 +165,9 @@ const orders=data.extraOrders.filter(o=>o.companyId===c.id && inSelectedMonth(o.
   const entryCosts=entries.reduce((s,e)=>s+Number(e.additionalCost||0),0);
   const orderCosts=normalOrders.reduce((s,o)=>s+Number(o.travelCost||0)+Number(o.extraCost||0),0);
   const costs=Number(c.travelCost||0)+Number(c.extraCost||0)+entryCosts+orderCosts;
-  const monthlyTimeCost=(workMinutes/60)*150;
-  const extraOrdersTimeCost=(normalOrderMinutes/60)*250;
-  const trainingTimeCost=(trainingMinutes/60)*(hasMonthlyService?150:0);
+  const monthlyTimeCost=entries.reduce((sum,e)=>sum+costForMinutes(Number(e.minutes||0)+Number(e.travelMinutes||0),resolveHourlyCost((data.users||[]).find(u=>u.id===e.userId),150)),0);
+  const extraOrdersTimeCost=normalOrders.reduce((sum,o)=>sum+costForMinutes(Number(o.minutes||0)+Number(o.travelMinutes||0),resolveHourlyCost((data.users||[]).find(u=>u.id===o.userId),250)),0);
+  const trainingTimeCost=trainings.reduce((sum,o)=>sum+costForMinutes(Number(o.minutes||0)+Number(o.travelMinutes||0),resolveHourlyCost((data.users||[]).find(u=>u.id===o.userId),hasMonthlyService?150:250)),0);
   const timeCost=monthlyTimeCost+extraOrdersTimeCost+trainingTimeCost;
   const profit=net-costs-timeCost;
   const rate=minutes?profit/(minutes/60):0;
@@ -1092,6 +1093,7 @@ async function deleteQuickNote(note){
     </div>
   </div>
 }
+ {tab==='tutorial'&&<TutorialPanel user={user}/>}
  {tab==='security'&&
   <div className="panel">
     <h1>Bezpieczeństwo i konto</h1>
@@ -1415,9 +1417,9 @@ function calculateRowsForMonth(data,month){
   const normalOrders=orders.filter(o=>String(o.type||'').toLowerCase()!=='szkolenie wstępne');
   const shopOrders=normalOrders.filter(o=>String(o.type||'').toLowerCase()==='zlecenie sklep');
   const regularOrders=normalOrders.filter(o=>String(o.type||'').toLowerCase()!=='zlecenie sklep');
-  const workMinutes=entries.reduce((sum,row)=>sum+Number(row.minutes||0),0);
-  const orderMinutes=normalOrders.reduce((sum,row)=>sum+Number(row.minutes||0),0);
-  const trainingMinutes=trainings.reduce((sum,row)=>sum+Number(row.minutes||0),0);
+  const workMinutes=entries.reduce((sum,row)=>sum+Number(row.minutes||0)+Number(row.travelMinutes||0),0);
+  const orderMinutes=normalOrders.reduce((sum,row)=>sum+Number(row.minutes||0)+Number(row.travelMinutes||0),0);
+  const trainingMinutes=trainings.reduce((sum,row)=>sum+Number(row.minutes||0)+Number(row.travelMinutes||0),0);
   const minutes=workMinutes+orderMinutes+trainingMinutes;
   const netMonthly=Number(c.netAmount||0);
   const monthly=netMonthly>0||String(c.billingType||'').toUpperCase()==='MONTHLY';
@@ -1425,7 +1427,7 @@ function calculateRowsForMonth(data,month){
   const trainingAmount=trainings.reduce((sum,row)=>sum+Number(row.netAmount||0),0);
   const netTotal=netMonthly+netOrders+(monthly?0:trainingAmount);
   const costs=Number(c.travelCost||0)+Number(c.extraCost||0)+entries.reduce((sum,row)=>sum+Number(row.additionalCost||0),0)+normalOrders.reduce((sum,row)=>sum+Number(row.travelCost||0)+Number(row.extraCost||0),0);
-  const timeCost=(workMinutes/60)*150+(orderMinutes/60)*250+(trainingMinutes/60)*(monthly?150:0);
+  const timeCost=entries.reduce((sum,e)=>sum+costForMinutes(Number(e.minutes||0)+Number(e.travelMinutes||0),resolveHourlyCost((data.users||[]).find(u=>u.id===e.userId),150)),0)+normalOrders.reduce((sum,o)=>sum+costForMinutes(Number(o.minutes||0)+Number(o.travelMinutes||0),resolveHourlyCost((data.users||[]).find(u=>u.id===o.userId),250)),0)+trainings.reduce((sum,o)=>sum+costForMinutes(Number(o.minutes||0)+Number(o.travelMinutes||0),resolveHourlyCost((data.users||[]).find(u=>u.id===o.userId),monthly?150:250)),0);
   const profit=netTotal-costs-timeCost;
   const rate=minutes?profit/(minutes/60):0;
   const activities=[...entries,...orders].map(row=>row.createdAt||row.date).filter(Boolean).sort((a,b)=>new Date(b)-new Date(a));
@@ -1521,9 +1523,31 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
   }).filter(worker=>worker.role==='WORKER'||worker.minutes>0);
  },[data,selectedMonth]);
 
+ const missing30=useMemo(()=>{
+  const end=isoToday();
+  const d=new Date(); d.setDate(d.getDate()-29);
+  const start=d.toISOString().slice(0,10);
+  return (data.users||[]).filter(u=>u.active!==false&&u.role==='WORKER').map(worker=>{
+   const days=buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:worker.id,dateFrom:start,dateTo:end});
+   const missingDays=days.filter(day=>day.missing>0);
+   const missingMinutes=missingDays.reduce((sum,day)=>sum+day.missing,0);
+   return {id:worker.id,name:worker.name,missingDays:missingDays.length,noEntryDays:missingDays.filter(day=>day.status==='NO_ENTRY').length,missingMinutes,averageMissing:missingDays.length?Math.round(missingMinutes/missingDays.length):0,details:missingDays};
+  }).sort((a,b)=>b.missingMinutes-a.missingMinutes);
+ },[data]);
+ const monthRangeCurrent=monthRange(selectedMonth);
+ const monthMissing=useMemo(()=>{
+  const all=(data.users||[]).filter(u=>u.active!==false&&u.role==='WORKER').map(worker=>({worker,days:buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:worker.id,dateFrom:monthRangeCurrent.from,dateTo:monthRangeCurrent.to})}));
+  return {complete:all.filter(x=>x.days.length&&x.days.every(d=>d.missing===0)).length,withMissing:all.filter(x=>x.days.some(d=>d.missing>0)).length,missingMinutes:all.reduce((s,x)=>s+x.days.reduce((a,d)=>a+d.missing,0),0),noEntryDays:all.reduce((s,x)=>s+x.days.filter(d=>d.status==='NO_ENTRY').length,0)};
+ },[data,selectedMonth]);
+
+
  return <div className="panel">
   <div className="row between"><h1>Centrum zarządzania</h1><label>Miesiąc: <input type="month" value={selectedMonth} onChange={e=>setSelectedMonth(e.target.value)} style={{marginLeft:8,maxWidth:180}}/></label></div>
   <div className="kpis">
+   <div className="card">Kompletna ewidencja<h2>{monthMissing.complete}</h2></div>
+   <div className="card">Pracownicy z brakami<h2>{monthMissing.withMissing}</h2></div>
+   <div className="card">Brakujące godziny<h2>{minToText(monthMissing.missingMinutes)}</h2></div>
+   <div className="card">Dni bez wpisów<h2>{monthMissing.noEntryDays}</h2></div>
    <div className="card">Przychód<h2>{money(rows.reduce((s,r)=>s+Number(r.netTotal||0),0))}</h2><small>{percentChange(rows.reduce((s,r)=>s+Number(r.netTotal||0),0),incomePrevious).toFixed(1)}% m/m</small></div>
    <div className="card">Zysk po kosztach<h2>{money(adminKpis.totalProfit)}</h2><small>{percentChange(adminKpis.totalProfit,totalPrevious).toFixed(1)}% m/m</small></div>
    <div className="card">Łączny czas<h2>{minToText(rows.reduce((s,r)=>s+Number(r.minutes||0),0))}</h2><small>{percentChange(rows.reduce((s,r)=>s+Number(r.minutes||0),0),minutesPrevious).toFixed(1)}% m/m</small></div>
@@ -1590,6 +1614,8 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
 
   <div className="card" style={{marginTop:16}}><h2>Porównanie z poprzednim miesiącem ({previousMonth})</h2><div style={{height:280}}><ResponsiveContainer width="100%" height="100%"><BarChart data={comparison}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip formatter={value=>money(value)}/><Legend/><Bar dataKey="poprzedni" name="Poprzedni miesiąc" fill="#7b8794"/><Bar dataKey="bieżący" name="Bieżący miesiąc" fill="#ff5a14"/></BarChart></ResponsiveContainer></div></div>
 
+  <div className="card" style={{marginTop:16}}><h2>Braki w ewidencji czasu pracy — ostatnie 30 dni</h2><div className="tableWrap"><table><thead><tr><th>Pracownik</th><th>Dni z brakami</th><th>Dni bez wpisu</th><th>Łącznie brakuje</th><th>Średni brak / dzień</th><th>Największe braki</th></tr></thead><tbody>{missing30.map(item=><tr key={item.id}><td><b>{item.name}</b></td><td>{item.missingDays}</td><td>{item.noEntryDays}</td><td><b>{minToText(item.missingMinutes)}</b></td><td>{minToText(item.averageMissing)}</td><td>{item.details.slice(0,3).map(d=><div key={d.date}>{d.date}: {d.status==='NO_ENTRY'?'brak wpisu':minToText(d.accounted)} → brakuje {minToText(d.missing)}</div>)}</td></tr>)}</tbody></table></div></div>
+
   <div id="admin-company-table" className="card" style={{marginTop:16,scrollMarginTop:20}}><h2>Firmy — pełny podgląd</h2>
    {healthFilter!=='ALL'&&<div className="infoBox" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:12}}>
     <span>Aktywny filtr: <b>{healthFilterLabels[healthFilter]||healthFilter}</b>. Tabela pokazuje tylko firmy z tej kategorii.</span>
@@ -1618,8 +1644,13 @@ function AdminOverview({rows,data,selectedMonth,setSelectedMonth,adminKpis}){
 }
 
 function CompanyAdminDetails({row,data,selectedMonth,onClose}){
+ const selectedMonthRange=monthRange(selectedMonth);
  const [historySourceFilter,setHistorySourceFilter]=useState('ALL');
  const [historySort,setHistorySort]=useState({key:'date',direction:'desc'});
+ const [dateFrom,setDateFrom]=useState(selectedMonthRange.from);
+ const [dateTo,setDateTo]=useState(selectedMonthRange.to);
+ const [employeeFilter,setEmployeeFilter]=useState('ALL');
+ const [typeFilter,setTypeFilter]=useState('ALL');
 
  const companyEntries=useMemo(()=>[
   ...(row.entries||[]).map(entry=>({
@@ -1633,6 +1664,8 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
    minutes:Number(entry.minutes||0),
    travelMinutes:Number(entry.travelMinutes||0),
    netAmount:0,
+   additionalCost:Number(entry.additionalCost||0),
+   hourlyCost:resolveHourlyCost((data.users||[]).find(user=>user.id===entry.userId),150),
    orderNumber:entry.orderNumber||null
   })),
   ...(row.orders||[])
@@ -1648,16 +1681,18 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
     minutes:Number(order.minutes||0),
     travelMinutes:Number(order.travelMinutes||0),
     netAmount:Number(order.netAmount||0),
+    additionalCost:Number(order.travelCost||0)+Number(order.extraCost||0),
+    hourlyCost:resolveHourlyCost((data.users||[]).find(user=>user.id===order.userId),250),
     orderNumber:order.orderNumber||null
    }))
  ].sort((a,b)=>new Date(b.date)-new Date(a.date)),[row.entries,row.orders,data.users]);
 
  const visibleCompanyEntries=useMemo(()=>{
-  const filtered=companyEntries.filter(item=>
-   historySourceFilter==='ALL'||
-   (historySourceFilter==='MONTHLY'&&item.source==='Obsługa miesięczna')||
-   (historySourceFilter==='EXTRA'&&item.source==='Zlecenie dodatkowe')
-  );
+  const filtered=companyEntries.filter(item=>{
+   const date=String(item.date||'').slice(0,10);
+   const sourceOk=historySourceFilter==='ALL'||(historySourceFilter==='MONTHLY'&&item.source==='Obsługa miesięczna')||(historySourceFilter==='EXTRA'&&item.source==='Zlecenie dodatkowe');
+   return sourceOk&&(!dateFrom||date>=dateFrom)&&(!dateTo||date<=dateTo)&&(employeeFilter==='ALL'||item.userId===employeeFilter)&&(typeFilter==='ALL'||item.type===typeFilter);
+  });
 
   return [...filtered].sort((a,b)=>{
    let av;
@@ -1681,7 +1716,7 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
    if(av<bv)return historySort.direction==='asc'?-1:1;
    return 0;
   });
- },[companyEntries,historySourceFilter,historySort]);
+ },[companyEntries,historySourceFilter,historySort,dateFrom,dateTo,employeeFilter,typeFilter]);
 
  function toggleHistorySort(key){
   setHistorySort(prev=>({
@@ -1695,15 +1730,15 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
   return historySort.direction==='asc'?'↑':'↓';
  }
 
- const totals=useMemo(()=>companyEntries.reduce((result,item)=>({
+ const totals=useMemo(()=>visibleCompanyEntries.reduce((result,item)=>({
   work:result.work+item.minutes,
   travel:result.travel+item.travelMinutes,
   total:result.total+item.minutes+item.travelMinutes
- }),{work:0,travel:0,total:0}),[companyEntries]);
+ }),{work:0,travel:0,total:0}),[visibleCompanyEntries]);
 
  const byType=useMemo(()=>{
   const map=new Map();
-  companyEntries.forEach(item=>{
+  visibleCompanyEntries.forEach(item=>{
    const key=String(item.type||'inne').trim()||'inne';
    const current=map.get(key)||{type:key,work:0,travel:0,total:0,count:0,workers:new Set()};
    current.work+=item.minutes;
@@ -1716,27 +1751,32 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
   return [...map.values()]
    .map(item=>({...item,workerCount:item.workers.size}))
    .sort((a,b)=>b.total-a.total);
- },[companyEntries]);
+ },[visibleCompanyEntries]);
 
  const byWorker=useMemo(()=>{
   const map=new Map();
-  companyEntries.forEach(item=>{
+  visibleCompanyEntries.forEach(item=>{
    const key=item.userName||'Nieznany pracownik';
-   const current=map.get(key)||{name:key,work:0,travel:0,total:0,count:0};
+   const current=map.get(key)||{name:key,work:0,travel:0,total:0,count:0,cost:0,hourlyCost:item.hourlyCost};
    current.work+=item.minutes;
    current.travel+=item.travelMinutes;
    current.total+=item.minutes+item.travelMinutes;
    current.count+=1;
+   current.cost+=costForMinutes(item.minutes+item.travelMinutes,item.hourlyCost);
    map.set(key,current);
   });
   return [...map.values()].sort((a,b)=>b.total-a.total);
- },[companyEntries]);
+ },[visibleCompanyEntries]);
 
  const series=useMemo(()=>{
   const result=[];const [year,month]=selectedMonth.split('-').map(Number);
   for(let offset=5;offset>=0;offset--){const d=new Date(year,month-1-offset,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const current=calculateRowsForMonth(data,key).find(item=>String(item.name||'').toLowerCase()===String(row.name||'').toLowerCase());result.push({month:key,zysk:Number(current?.profit||0),czas:Number(current?.minutes||0)/60});}
   return result;
  },[data,row.name,selectedMonth]);
+
+ const filteredTimeCost=visibleCompanyEntries.reduce((sum,item)=>sum+costForMinutes(item.minutes+item.travelMinutes,item.hourlyCost),0);
+ const filteredMargin=marginPercent(row.profit,row.netTotal);
+ const availableTypes=[...new Set(companyEntries.map(item=>item.type).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
 
  return <div id="admin-company-details" className="card" style={{marginTop:16,border:'2px solid #ff5a14',scrollMarginTop:16}}>
   <div className="row between">
@@ -1755,7 +1795,7 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
    <div className="card">Czas pracy<h2>{minToText(totals.work)}</h2></div>
    <div className="card">Czas dojazdów<h2>{minToText(totals.travel)}</h2></div>
    <div className="card">Praca + dojazdy<h2>{minToText(totals.total)}</h2></div>
-   <div className="card">Opiekun<h2>{row.assignedUser?.name||'-'}</h2></div>
+   <div className="card">Opiekun<h2>{row.assignedUser?.name||'-'}</h2></div><div className="card">Koszt czasu (filtr)<h2>{money(filteredTimeCost)}</h2></div><div className="card">Marża klienta<h2>{filteredMargin.toFixed(2)}%</h2></div>
   </div>
 
   <div style={{height:260,marginTop:16}}>
@@ -1787,12 +1827,14 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
     <h3 style={{marginTop:0}}>Czas według pracowników</h3>
     <div className="tableWrap">
      <table>
-      <thead><tr><th>Pracownik</th><th>Wpisy</th><th>Praca</th><th>Dojazdy</th><th>Łącznie</th></tr></thead>
-      <tbody>{byWorker.map(worker=><tr key={worker.name}><td><b>{worker.name}</b></td><td>{worker.count}</td><td>{minToText(worker.work)}</td><td>{worker.travel?minToText(worker.travel):'-'}</td><td><b>{minToText(worker.total)}</b></td></tr>)}</tbody>
+      <thead><tr><th>Pracownik</th><th>Wpisy</th><th>Praca</th><th>Dojazdy</th><th>Łącznie</th><th>Koszt godziny</th><th>Koszt pracownika</th></tr></thead>
+      <tbody>{byWorker.map(worker=><tr key={worker.name}><td><b>{worker.name}</b></td><td>{worker.count}</td><td>{minToText(worker.work)}</td><td>{worker.travel?minToText(worker.travel):'-'}</td><td><b>{minToText(worker.total)}</b></td><td>{money(worker.hourlyCost)}/h</td><td><b>{money(worker.cost)}</b></td></tr>)}</tbody>
      </table>
     </div>
    </div>
   </div>
+
+  <div className="card" style={{marginTop:18,background:'#f7fafc'}}><div className="grid2"><Field label="Data od"><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></Field><Field label="Data do"><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/></Field><Field label="Pracownik"><select value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)}><option value="ALL">Wszyscy pracownicy</option>{(data.users||[]).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field><Field label="Rodzaj czynności"><select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="ALL">Wszystkie czynności</option>{availableTypes.map(type=><option key={type} value={type}>{type}</option>)}</select></Field></div><a className="btn orange" href={`/api/export/excel?month=${selectedMonth}&companyId=${row.id}`}>Eksport Excel tego klienta</a></div>
 
   <div className="row between" style={{marginTop:18,gap:12,flexWrap:'wrap'}}>
    <h3 style={{margin:0}}>Szczegółowa historia pracy i dojazdów</h3>
@@ -1817,7 +1859,7 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
      <th onClick={()=>toggleHistorySort('netAmount')} style={{cursor:'pointer'}}>Kwota zlecenia {historySortArrow('netAmount')}</th>
      <th onClick={()=>toggleHistorySort('minutes')} style={{cursor:'pointer'}}>Praca {historySortArrow('minutes')}</th>
      <th onClick={()=>toggleHistorySort('travelMinutes')} style={{cursor:'pointer'}}>Dojazd {historySortArrow('travelMinutes')}</th>
-     <th onClick={()=>toggleHistorySort('total')} style={{cursor:'pointer'}}>Łącznie {historySortArrow('total')}</th>
+     <th onClick={()=>toggleHistorySort('total')} style={{cursor:'pointer'}}>Łącznie {historySortArrow('total')}</th><th>Koszt godziny</th><th>Koszt czasu</th><th>Koszt dodatkowy</th>
     </tr></thead>
     <tbody>{visibleCompanyEntries.map(item=><tr key={item.id}>
      <td>{String(item.date||'').slice(0,10)}</td>
@@ -1829,7 +1871,7 @@ function CompanyAdminDetails({row,data,selectedMonth,onClose}){
      <td>{item.source==='Zlecenie dodatkowe'?money(item.netAmount):'-'}</td>
      <td>{minToText(item.minutes)}</td>
      <td>{item.travelMinutes?minToText(item.travelMinutes):'-'}</td>
-     <td><b>{minToText(item.minutes+item.travelMinutes)}</b></td>
+     <td><b>{minToText(item.minutes+item.travelMinutes)}</b></td><td>{money(item.hourlyCost)}/h</td><td>{money(costForMinutes(item.minutes+item.travelMinutes,item.hourlyCost))}</td><td>{item.additionalCost?money(item.additionalCost):'-'}</td>
     </tr>)}</tbody>
    </table>
   </div>
@@ -1879,27 +1921,11 @@ function ShopOrdersPanel({data,shopOrder,setShopOrder,addShopOrder,deleteExtraOr
 
 
 function isoToday(){return new Date().toISOString().slice(0,10)}
-function localDateFromIso(iso){const [y,m,d]=String(iso).slice(0,10).split('-').map(Number);return new Date(y,m-1,d,12,0,0)}
-function businessDateList(from,to){
- const today=isoToday(); const effectiveTo=to>today?today:to;
- if(!from||!effectiveTo||from>effectiveTo)return [];
- const out=[]; const cursor=localDateFromIso(from); const end=localDateFromIso(effectiveTo);
- while(cursor<=end){const day=cursor.getDay();if(day!==0&&day!==6)out.push(cursor.toISOString().slice(0,10));cursor.setDate(cursor.getDate()+1)}
- return out;
-}
-const DAILY_NORM_MINUTES=450;
+const DAILY_NORM_MINUTES=DAILY_WORK_NORM_MINUTES;
 function absenceTypeLabel(type){return ({VACATION:'🏖 Urlop',SICK_LEAVE:'🤒 L4',CARE:'👶 Opieka',TIME_OFF:'⏱ Odbiór nadgodzin',OTHER:'📌 Inna nieobecność'})[type]||type}
 function absenceStatusLabel(status){return ({PENDING:'Oczekuje na akceptację',APPROVED:'Zaakceptowane',REJECTED:'Odrzucone'})[status]||status}
 function monthRange(month){const [y,m]=month.split('-').map(Number);return {from:`${month}-01`,to:`${month}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`}}
-function absenceMinutesForDate(absences,date,approvedOnly=true){
- return (absences||[]).filter(a=>(!approvedOnly||a.status==='APPROVED')&&String(a.dateFrom).slice(0,10)<=date&&String(a.dateTo).slice(0,10)>=date).reduce((sum,a)=>sum+Number(a.minutes||0),0);
-}
-function buildDailyReport({entries,extraOrders,absences,userId,dateFrom,dateTo}){
- const dates=businessDateList(dateFrom,dateTo); const grouped=new Map();
- const add=(entry)=>{if(entry.userId!==userId)return;const date=String(entry.date||'').slice(0,10);if(date<dateFrom||date>dateTo)return;const row=grouped.get(date)||{work:0,travel:0,entries:0,companies:new Set()};row.work+=Number(entry.minutes||0);row.travel+=Number(entry.travelMinutes||0);row.entries++;if(entry.company?.name)row.companies.add(entry.company.name);else if(entry.companyName)row.companies.add(entry.companyName);grouped.set(date,row)};
- (entries||[]).forEach(add);(extraOrders||[]).forEach(add);
- return dates.map(date=>{const row=grouped.get(date)||{work:0,travel:0,entries:0,companies:new Set()};const approvedAbsence=Math.min(DAILY_NORM_MINUTES,absenceMinutesForDate(absences,date,true));const pending=(absences||[]).filter(a=>a.userId===userId&&a.status==='PENDING'&&String(a.dateFrom).slice(0,10)<=date&&String(a.dateTo).slice(0,10)>=date);const accounted=row.work+row.travel+approvedAbsence;const missing=Math.max(0,DAILY_NORM_MINUTES-accounted);let status='OK';if(approvedAbsence>=DAILY_NORM_MINUTES&&row.work+row.travel===0)status='ABSENCE';else if(missing===DAILY_NORM_MINUTES)status='NO_ENTRY';else if(missing>0)status='MISSING';return {...row,date,absence:approvedAbsence,pending,accounted,missing,status,companies:[...row.companies].join(', ')||'-'};}).sort((a,b)=>b.date.localeCompare(a.date));
-}
+function buildDailyReport(args){return buildDailyWorkReport({...args,normMinutes:DAILY_NORM_MINUTES})}
 
 function WorkerMissingAlert({data,user,onOpen}){
  const today=isoToday(); const rows=buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:user.id,dateFrom:today,dateTo:today}); const row=rows[0];
@@ -1987,23 +2013,51 @@ function MissingReportPanel({data,user,reload}){
 }
 
 function WorkerStatsPanel({ data, reload }) {
- const today=isoToday(); const currentMonth=today.slice(0,7); const initial=monthRange(currentMonth); const [workerId,setWorkerId]=useState('ALL'); const [companyFilter,setCompanyFilter]=useState('ALL'); const [month,setMonth]=useState(currentMonth); const [dateFrom,setDateFrom]=useState(initial.from); const [dateTo,setDateTo]=useState(initial.to); const [editEntry,setEditEntry]=useState(null);
- const selectedUser=(data.users||[]).find(u=>u.id===workerId); function changeMonth(v){setMonth(v);const r=monthRange(v);setDateFrom(r.from);setDateTo(r.to)}
+ const today=isoToday();
+ const currentMonth=today.slice(0,7);
+ const initial=monthRange(currentMonth);
+ const [workerId,setWorkerId]=useState('ALL');
+ const [companyFilter,setCompanyFilter]=useState('ALL');
+ const [month,setMonth]=useState(currentMonth);
+ const [dateFrom,setDateFrom]=useState(initial.from);
+ const [dateTo,setDateTo]=useState(initial.to);
+ const [selectedDay,setSelectedDay]=useState('');
+ const selectedUser=(data.users||[]).find(u=>u.id===workerId);
+ function changeMonth(v){setMonth(v);const r=monthRange(v);setDateFrom(r.from);setDateTo(r.to)}
+ function applyPeriod(kind){
+  if(kind==='CURRENT'){changeMonth(currentMonth);return;}
+  if(kind==='PREVIOUS'){const [y,m]=currentMonth.split('-').map(Number);const d=new Date(y,m-2,1);changeMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);return;}
+  if(kind==='30'){const end=today;const d=new Date();d.setDate(d.getDate()-29);setDateFrom(d.toISOString().slice(0,10));setDateTo(end);setMonth('');}
+ }
  const companyName=id=>(data.companies||[]).find(c=>c.id===id)?.name||'Firma spoza listy';
  const workerName=e=>e.user?.name||(data.users||[]).find(u=>u.id===e.userId)?.name||'Nieznany pracownik';
  const allEntries=useMemo(()=>[...(data.workEntries||[]).map(e=>({...e,entryKind:'WORK'})),...(data.extraOrders||[]).map(e=>({...e,entryKind:'EXTRA'}))].map(e=>({...e,worker:workerName(e),company:companyName(e.companyId),dateText:String(e.date||'').slice(0,10)})),[data]);
  const entries=allEntries.filter(e=>(workerId==='ALL'||e.userId===workerId)&&(!dateFrom||e.dateText>=dateFrom)&&(!dateTo||e.dateText<=dateTo)&&(companyFilter==='ALL'||e.companyId===companyFilter)).sort((a,b)=>b.dateText.localeCompare(a.dateText));
  const work=entries.reduce((s,e)=>s+Number(e.minutes||0),0),travel=entries.reduce((s,e)=>s+Number(e.travelMinutes||0),0),companies=new Set(entries.map(e=>e.companyId)).size;
- const rows=workerId==='ALL'?[]:buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:workerId,dateFrom,dateTo}); const absence=rows.reduce((s,r)=>s+r.absence,0),missing=rows.reduce((s,r)=>s+r.missing,0),required=rows.length*DAILY_NORM_MINUTES,daysNo=rows.filter(r=>r.status==='NO_ENTRY').length,daysBelow=rows.filter(r=>r.status==='MISSING').length,daysOk=rows.filter(r=>r.missing===0).length;
- async function updateAbsence(a,status){try{await jsonFetch('/api/absences/'+a.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});await reload()}catch(err){alert(err.message)}} async function deleteAbsence(a){if(!confirm('Usunąć nieobecność?'))return;try{await jsonFetch('/api/absences/'+a.id,{method:'DELETE'});await reload()}catch(err){alert(err.message)}}
+ const hourlyCost=resolveHourlyCost(selectedUser,250);
+ const totalEmployeeCost=workerId==='ALL'?0:costForMinutes(work+travel,hourlyCost);
+ const rows=workerId==='ALL'?[]:buildDailyReport({entries:data.workEntries,extraOrders:data.extraOrders,absences:data.absences,userId:workerId,dateFrom,dateTo});
+ const absence=rows.reduce((s,r)=>s+r.absence,0),missing=rows.reduce((s,r)=>s+r.missing,0),required=rows.length*DAILY_NORM_MINUTES,daysNo=rows.filter(r=>r.status==='NO_ENTRY').length,daysBelow=rows.filter(r=>r.status==='MISSING').length,daysOk=rows.filter(r=>r.missing===0).length;
+ const selectedDayEntries=selectedDay?allEntries.filter(e=>e.userId===workerId&&e.dateText===selectedDay):[];
+ async function updateAbsence(a,status){try{await jsonFetch('/api/absences/'+a.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});await reload()}catch(err){alert(err.message)}}
+ async function deleteAbsence(a){if(!confirm('Usunąć nieobecność?'))return;try{await jsonFetch('/api/absences/'+a.id,{method:'DELETE'});await reload()}catch(err){alert(err.message)}}
  async function deleteEntry(entry){if(!confirm(`Usunąć wpis: ${entry.worker} / ${entry.company}?`))return;try{await jsonFetch((entry.entryKind==='EXTRA'?'/api/extra-orders/':'/api/work/')+entry.id,{method:'DELETE'});await reload()}catch(err){alert(err.message)}}
- return <div className="panel"><h1>Pracownicy</h1><div className="card"><div className="grid2"><Field label="Pracownik"><select value={workerId} onChange={e=>setWorkerId(e.target.value)}><option value="ALL">Wszyscy pracownicy</option>{(data.users||[]).filter(u=>u.active!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field><Field label="Miesiąc"><input type="month" value={month} onChange={e=>changeMonth(e.target.value)}/></Field><Field label="Data od"><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></Field><Field label="Data do"><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/></Field><Field label="Firma"><select value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)}><option value="ALL">Wszystkie firmy</option>{(data.companies||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field></div></div><div className="kpis"><div className="card">Pracownik<h2>{selectedUser?.name||'Wszyscy'}</h2></div><div className="card">Czas pracy<h2>{minToText(work)}</h2></div><div className="card">Dojazdy<h2>{minToText(travel)}</h2></div><div className="card">Nieobecności<h2>{minToText(absence)}</h2></div><div className="card">Rozliczone<h2>{minToText(work+travel+absence)}</h2></div><div className="card">Wymagana norma<h2>{workerId==='ALL'?'-':minToText(required)}</h2></div><div className="card">Brakuje<h2>{workerId==='ALL'?'-':minToText(missing)}</h2></div><div className="card">Firmy<h2>{companies}</h2></div><div className="card">Wpisy<h2>{entries.length}</h2></div></div>{workerId!=='ALL'&&<><div className="card"><h2>Realizacja czasu pracy — {selectedUser?.name}</h2><p><b>Dni OK:</b> {daysOk} &nbsp; <b>Poniżej normy:</b> {daysBelow} &nbsp; <b>Bez wpisu:</b> {daysNo}</p><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firmy</th><th>Wpisy</th><th>Praca</th><th>Dojazd</th><th>Nieobecność</th><th>Łącznie</th><th>Norma</th><th>Brakuje</th><th>Status</th></tr></thead><tbody>{rows.map(r=><tr key={r.date} style={{background:r.pending.length>0?'#eef5ff':r.missing===0?'#edf9f1':r.status==='NO_ENTRY'?'#fff0f0':'#fff8e6'}}><td>{r.date}</td><td>{r.companies}</td><td>{r.entries}</td><td>{minToText(r.work)}</td><td>{minToText(r.travel)}</td><td>{r.absence?minToText(r.absence):'-'}</td><td><b>{minToText(r.accounted)}</b></td><td>7h 30m</td><td>{r.missing?minToText(r.missing):'-'}</td><td>{r.pending.length>0?'⏳ Oczekuje na akceptację':r.missing===0?'✅ OK':r.status==='NO_ENTRY'?'🔴 Brak wpisu':'⚠️ Poniżej 7 h 30 min'}</td></tr>)}</tbody></table></div></div><AbsenceForm data={data} user={{id:workerId}} reload={reload} admin defaultUserId={workerId}/></>}
- <div className="card"><h2>Zgłoszenia nieobecności</h2><div className="tableWrap"><table><thead><tr><th>Pracownik</th><th>Rodzaj</th><th>Od</th><th>Do</th><th>Godzin/dzień</th><th>Status</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{(data.absences||[]).filter(a=>workerId==='ALL'||a.userId===workerId).map(a=><tr key={a.id}><td>{a.user?.name||'-'}</td><td>{absenceTypeLabel(a.type)}</td><td>{String(a.dateFrom).slice(0,10)}</td><td>{String(a.dateTo).slice(0,10)}</td><td>{minToText(a.minutes)}</td><td>{absenceStatusLabel(a.status)}</td><td>{a.note||'-'}</td><td><div className="row">{a.status==='PENDING'&&<><button className="orange" onClick={()=>updateAbsence(a,'APPROVED')}>Akceptuj</button><button className="light" onClick={()=>updateAbsence(a,'REJECTED')}>Odrzuć</button></>}<button className="red" onClick={()=>deleteAbsence(a)}>Usuń</button></div></td></tr>)}</tbody></table></div></div>
- <div className="card"><h2>Wpisy pracy</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Pracownik</th><th>Firma</th><th>Źródło</th><th>Typ</th><th>Opis</th><th>Praca</th><th>Dojazd</th><th>Akcje</th></tr></thead><tbody>{entries.map(e=><tr key={`${e.entryKind}-${e.id}`}><td>{e.dateText}</td><td>{e.worker}</td><td>{e.company}</td><td>{e.entryKind==='EXTRA'?'Zlecenie dodatkowe':'Obsługa miesięczna'}</td><td>{e.type}</td><td>{e.description||e.title||'-'}</td><td>{minToText(e.minutes)}</td><td>{minToText(e.travelMinutes)}</td><td><button className="red" onClick={()=>deleteEntry(e)}>Usuń</button></td></tr>)}</tbody></table></div></div></div>
+ return <div className="panel"><h1>Pracownicy</h1>
+  <div className="card"><div className="row" style={{marginBottom:12,flexWrap:'wrap'}}><button type="button" className="light" onClick={()=>applyPeriod('CURRENT')}>Bieżący miesiąc</button><button type="button" className="light" onClick={()=>applyPeriod('PREVIOUS')}>Poprzedni miesiąc</button><button type="button" className="light" onClick={()=>applyPeriod('30')}>Ostatnie 30 dni</button></div><div className="grid2"><Field label="Pracownik"><select value={workerId} onChange={e=>{setWorkerId(e.target.value);setSelectedDay('')}}><option value="ALL">Wszyscy pracownicy</option>{(data.users||[]).filter(u=>u.active!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field><Field label="Miesiąc"><input type="month" value={month} onChange={e=>changeMonth(e.target.value)}/></Field><Field label="Data od"><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></Field><Field label="Data do"><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/></Field><Field label="Firma"><select value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)}><option value="ALL">Wszystkie firmy</option>{(data.companies||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field></div></div>
+  <div className="kpis"><div className="card">Pracownik<h2>{selectedUser?.name||'Wszyscy'}</h2></div><div className="card">Czas pracy<h2>{minToText(work)}</h2></div><div className="card">Dojazdy<h2>{minToText(travel)}</h2></div><div className="card">Nieobecności<h2>{minToText(absence)}</h2></div><div className="card">Rozliczone<h2>{minToText(work+travel+absence)}</h2></div><div className="card">Brakuje<h2>{workerId==='ALL'?'-':minToText(missing)}</h2></div><div className="card">Koszt godziny<h2>{workerId==='ALL'?'-':money(hourlyCost)+'/h'}</h2></div><div className="card">Koszt pracownika<h2>{workerId==='ALL'?'-':money(totalEmployeeCost)}</h2></div></div>
+  {workerId!=='ALL'&&<><div className="card"><h2>Ewidencja czasu — {selectedUser?.name}</h2><p><b>Dni OK:</b> {daysOk} &nbsp; <b>Poniżej normy:</b> {daysBelow} &nbsp; <b>Bez wpisu:</b> {daysNo} &nbsp; <b>Łącznie brakuje:</b> {minToText(missing)}</p><div className="tableWrap"><table><thead><tr><th>Data</th><th>Firmy</th><th>Liczba wpisów</th><th>Czas pracy</th><th>Dojazd</th><th>Nieobecność</th><th>Łącznie</th><th>Norma</th><th>Brakuje</th><th>Status</th></tr></thead><tbody>{rows.map(r=><tr key={r.date} onClick={()=>setSelectedDay(r.date)} style={{cursor:'pointer',background:r.pending.length>0?'#eef5ff':r.missing===0?'#edf9f1':r.status==='NO_ENTRY'?'#fff0f0':'#fff8e6'}}><td><b>{r.date}</b></td><td>{r.companies}</td><td>{r.entries}</td><td>{minToText(r.work)}</td><td>{minToText(r.travel)}</td><td>{r.absence?minToText(r.absence):'-'}</td><td><b>{minToText(r.accounted)}</b></td><td>{minToText(DAILY_NORM_MINUTES)}</td><td>{r.missing?minToText(r.missing):'-'}</td><td>{r.pending.length>0?'⏳ Oczekuje':r.missing===0?'✅ OK':r.status==='NO_ENTRY'?'🔴 Brak wpisu':'⚠️ Niepełny dzień'}</td></tr>)}</tbody></table></div><p className="muted">Kliknij dzień, aby zobaczyć dokładne wpisy.</p></div>
+   {selectedDay&&<div className="card"><div className="row between"><h2>Moje wpisy z wybranego dnia — {selectedDay}</h2><b>Łącznie: {minToText(selectedDayEntries.reduce((s,e)=>s+Number(e.minutes||0)+Number(e.travelMinutes||0),0))}</b></div>{selectedDayEntries.length===0?<p className="muted">Brak wpisów tego dnia.</p>:<div className="tableWrap"><table><thead><tr><th>Firma</th><th>Rodzaj pracy / czynność</th><th>Opis</th><th>Czas pracy</th><th>Dojazd</th><th>Numer zlecenia</th><th>Akcje</th></tr></thead><tbody>{selectedDayEntries.map(e=><tr key={`${e.entryKind}-${e.id}`}><td>{e.company}</td><td>{e.type||e.title||'-'}</td><td>{e.description||e.title||'-'}</td><td>{minToText(e.minutes)}</td><td>{Number(e.travelMinutes||0)?minToText(e.travelMinutes):'-'}</td><td>{e.orderNumber||'-'}</td><td><button className="red" onClick={()=>deleteEntry(e)}>Usuń</button></td></tr>)}</tbody></table></div>}</div>}
+   <AbsenceForm data={data} user={{id:workerId}} reload={reload} admin defaultUserId={workerId}/></>}
+  <div className="card"><h2>Wpisy pracy</h2><div className="tableWrap"><table><thead><tr><th>Data</th><th>Pracownik</th><th>Firma</th><th>Źródło</th><th>Typ</th><th>Opis</th><th>Praca</th><th>Dojazd</th><th>Akcje</th></tr></thead><tbody>{entries.map(e=><tr key={`${e.entryKind}-${e.id}`}><td>{e.dateText}</td><td>{e.worker}</td><td>{e.company}</td><td>{e.entryKind==='EXTRA'?'Zlecenie dodatkowe':'Obsługa miesięczna'}</td><td>{e.type}</td><td>{e.description||e.title||'-'}</td><td>{minToText(e.minutes)}</td><td>{minToText(e.travelMinutes)}</td><td><button className="red" onClick={()=>deleteEntry(e)}>Usuń</button></td></tr>)}</tbody></table></div></div>
+ </div>
 }
 
-function EmployeeCard({u,onEdit,onDelete}){return <div className="card employeeCard"><div><h2>{u.name}</h2><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role==='ADMIN'?'Administrator':'BHP'}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" title="Edytuj" onClick={onEdit}>✏️</button><button className="light iconBtn" title="Usuń" onClick={onDelete}>🗑️</button></div></div>}
-function UsersPanel({data,editUser,setEditUser,addUser,saveUser,deleteUser}){return <div className="panel">{!editUser&&<><h1>Użytkownicy i role</h1><form className="card" onSubmit={addUser}><h2>Dodaj użytkownika</h2><div className="grid2"><input name="email" placeholder="Login nowego użytkownika" required/><input name="name" placeholder="Imię i nazwisko" required/><input name="password" type="password" placeholder="Hasło tymczasowe" required/><select name="role"><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select></div><h3>Uprawnienia</h3><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={k==='work'||k==='pwa'}/> {l}</label>)}</div><button>Dodaj użytkownika</button></form><h2>Lista użytkowników</h2>{data.users.map(u=><div className="card employeeCard" key={u.id}><div><h3>{u.name}</h3><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span></div><div className="employeeActions"><button className="light iconBtn" onClick={()=>setEditUser(u)}>✏️</button><button className="light iconBtn" onClick={()=>deleteUser(u)}>🗑️</button></div></div>)}</>}{editUser&&<form className="card" onSubmit={saveUser}><h1>✏️ Edycja konta użytkownika</h1><button type="button" className="light" onClick={()=>setEditUser(null)}>← Wróć do listy użytkowników</button><div className="grid2"><input name="email" defaultValue={editUser.email}/><input name="name" defaultValue={editUser.name}/><select name="role" defaultValue={editUser.role}><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select><label><input name="active" type="checkbox" defaultChecked={editUser.active} style={{width:'auto'}}/> Konto aktywne</label></div><h2>Uprawnienia</h2><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={!!editUser.permissions?.[k]}/> {l}</label>)}</div><input name="password" type="password" placeholder="Nowe hasło — zostaw puste, jeśli nie chcesz zmieniać"/><button>Zapisz zmiany</button> <button type="button" className="red" onClick={()=>deleteUser(editUser)}>Usuń użytkownika</button></form>}</div>}
+
+function EmployeeCard({u,onEdit,onDelete}){return <div className="card employeeCard"><div><h2>{u.name}</h2><p>ID: {u.id.slice(0,6)} | Login: {u.email}</p><span className="pill">{u.role==='ADMIN'?'Administrator':'BHP'}</span> <span className="pill green">{u.active?'Aktywny':'Nieaktywny'}</span> <span className="pill">Koszt: {u.hourlyCost?money(u.hourlyCost)+'/h':'stawka domyślna'}</span></div><div className="employeeActions"><button className="light iconBtn" title="Edytuj" onClick={onEdit}>✏️</button><button className="light iconBtn" title="Usuń" onClick={onDelete}>🗑️</button></div></div>}
+function UsersPanel({data,editUser,setEditUser,addUser,saveUser,deleteUser}){return <div className="panel">{!editUser&&<><h1>Użytkownicy i role</h1><form className="card" onSubmit={addUser}><h2>Dodaj użytkownika</h2><div className="grid2"><input name="email" placeholder="Login nowego użytkownika" required/><input name="name" placeholder="Imię i nazwisko" required/><input name="password" type="password" placeholder="Hasło tymczasowe" required/><select name="role"><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select><input name="hourlyCost" type="number" min="0" step="0.01" placeholder="Indywidualny koszt godziny, np. 250"/></div><p className="muted">Jeżeli koszt godziny pozostanie pusty, aplikacja użyje dotychczasowej stawki domyślnej zależnej od rodzaju pracy.</p><h3>Uprawnienia</h3><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={k==='work'||k==='pwa'||k==='tutorial'}/> {l}</label>)}</div><button>Dodaj użytkownika</button></form><h2>Lista użytkowników</h2>{data.users.map(u=><EmployeeCard key={u.id} u={u} onEdit={()=>setEditUser(u)} onDelete={()=>deleteUser(u)}/>)}</>}{editUser&&<form className="card" onSubmit={saveUser}><h1>✏️ Edycja konta użytkownika</h1><button type="button" className="light" onClick={()=>setEditUser(null)}>← Wróć do listy użytkowników</button><div className="grid2"><input name="email" defaultValue={editUser.email}/><input name="name" defaultValue={editUser.name}/><select name="role" defaultValue={editUser.role}><option value="ADMIN">Administrator</option><option value="WORKER">BHP / Pracownik</option></select><label><input name="active" type="checkbox" defaultChecked={editUser.active} style={{width:'auto'}}/> Konto aktywne</label><input name="hourlyCost" type="number" min="0" step="0.01" defaultValue={editUser.hourlyCost==null?'':Number(editUser.hourlyCost)} placeholder="Koszt godziny, np. 250"/></div><h2>Uprawnienia</h2><div className="permGrid">{modules.map(([k,l])=><label key={k}><input name={'perm_'+k} type="checkbox" defaultChecked={!!editUser.permissions?.[k]}/> {l}</label>)}</div><input name="password" type="password" placeholder="Nowe hasło — zostaw puste, jeśli nie chcesz zmieniać"/><button>Zapisz zmiany</button> <button type="button" className="red" onClick={()=>deleteUser(editUser)}>Usuń użytkownika</button></form>}</div>}
+
+function TutorialPanel({user}){return <div className="panel"><h1>Jak korzystać z aplikacji?</h1><div className="grid"><div className="card"><h2>Dla pracownika</h2><ol><li><b>Dodaj wpis:</b> wejdź w Panel pracownika, wybierz datę i firmę.</li><li><b>Czas pracy:</b> wpisuj np. 2:30 albo 2h 30m. System zapisuje czas w minutach.</li><li><b>Dojazd:</b> zaznacz opcję Dojazd i wpisz jego czas.</li><li><b>Opis:</b> krótko napisz co zostało wykonane.</li><li><b>Popraw wpis:</b> w tabeli swoich wpisów wybierz Edytuj.</li><li><b>Sprawdź dzień:</b> Raport braków pokazuje normę {minToText(DAILY_NORM_MINUTES)}, braki i nieobecności.</li></ol></div>{user.role==='ADMIN'&&<div className="card"><h2>Dla administratora</h2><ol><li><b>Pracownik:</b> zakładka Pracownicy pokazuje ewidencję dzień po dniu.</li><li><b>Brakujące godziny:</b> dashboard i profil pracownika pokazują dokładną liczbę brakujących godzin.</li><li><b>Klient:</b> na dashboardzie kliknij Szczegóły przy firmie, aby zobaczyć kto, kiedy i co robił.</li><li><b>Rentowność:</b> przychód pomniejszany jest o koszty dodatkowe i koszt czasu pracowników.</li><li><b>Koszt godziny:</b> Użytkownicy i role → Edycja konta → Koszt godziny.</li><li><b>Excel:</b> Eksporty → wybierz miesiąc → Excel za miesiąc.</li></ol></div>}</div></div>}
+
 function ChartPanel({title,rows,dataKey,color}){return <div className="panel"><h1>{title}</h1><div className="card chartBox"><ResponsiveContainer width="100%" height="100%"><BarChart data={rows}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip/><Bar dataKey={dataKey} fill={color}/></BarChart></ResponsiveContainer></div></div>}
 function AuditTable(){return <div className="tableWrap"><table><thead><tr><th>id</th><th>event_time</th><th>username</th><th>action</th><th>details</th></tr></thead><tbody><tr><td>1</td><td>{new Date().toISOString()}</td><td>admin</td><td>LOGOWANIE</td><td>Udane logowanie</td></tr></tbody></table></div>}
 async function generateProfitPdf(r, selectedMonth) {

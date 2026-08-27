@@ -5,9 +5,9 @@ export async function PUT(req,{params}){
   const user=currentUser();
   if(!user||user.role!=='ADMIN') return Response.json({error:'Forbidden'},{status:403});
   const b=await req.json();
-  const data={email:b.email,name:b.name,role:b.role||'WORKER',active:b.active==='on'||b.active===true,permissions:b.permissions||{}};
+  const data={email:b.email,name:b.name,role:b.role||'WORKER',active:b.active==='on'||b.active===true,hourlyCost:b.hourlyCost===''||b.hourlyCost==null?null:Number(b.hourlyCost),permissions:b.permissions||{}};
   if(b.password) data.passwordHash=await hashPassword(b.password);
-  const updated=await prisma.user.update({where:{id:params.id},data,select:{id:true,email:true,name:true,role:true,active:true,permissions:true}});
+  const updated=await prisma.user.update({where:{id:params.id},data,select:{id:true,email:true,name:true,role:true,active:true,hourlyCost:true,permissions:true}});
   await prisma.auditLog.create({data:{userId:user.id,action:'UPDATE',entity:'User',entityId:updated.id,after:updated}});
   return Response.json(updated);
 }

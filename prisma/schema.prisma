@@ -31,6 +31,7 @@ model User {
   passwordHash      String
   role              Role        @default(WORKER)
   active            Boolean     @default(true)
+  hourlyCost        Decimal?    @db.Decimal(10, 2)
   permissions       Json?
   workEntries       WorkEntry[]
   extraOrders       ExtraOrder[]
