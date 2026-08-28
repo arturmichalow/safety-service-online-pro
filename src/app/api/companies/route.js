@@ -66,7 +66,19 @@ export async function POST(req){
       include:{assignedUser:{select:{id:true,name:true,email:true}}}
     });
     await tx.auditLog.create({
-      data:{userId:user.id,action:'CREATE',entity:'Company',entityId:company.id,after:company}
+      data:{
+        userId:user.id,
+        action:'CREATE',
+        entity:'Company',
+        entityId:company.id,
+        after:{
+          id:company.id,
+          name:company.name,
+          status:company.status,
+          billingType:company.billingType,
+          assignedUserId:company.assignedUserId||null
+        }
+      }
     });
     return {company,reused:false};
   });
