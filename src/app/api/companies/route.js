@@ -28,60 +28,68 @@ function data(b){
 }
 
 export async function POST(req){
-  const user=await currentUser();
-  if(!user||!['ADMIN','WORKER'].includes(user.role)){
-    return Response.json({error:'Forbidden'},{status:403});
-  }
+  try{
+    const user=await currentUser();
+    if(!user||!['ADMIN','WORKER'].includes(user.role)){
+      return Response.json({error:'Forbidden'},{status:403});
+    }
 
-  const body=await req.json();
-  const payload=data(body);
-  if(!payload.name){
-    return Response.json({error:'Wpisz nazwę firmy.'},{status:400});
-  }
+    const body=await req.json();
+    const payload=data(body);
+    if(!payload.name){
+      return Response.json({error:'Wpisz nazwę firmy.'},{status:400});
+    }
 
-  if(user.role!=='ADMIN'){
-    payload.netAmount=0;
-    payload.travelCost=0;
-    payload.extraCost=0;
-    payload.extraCostDescription=null;
-    payload.billingType='MONTHLY';
-    payload.assignedUserId=user.id;
-  }
+    if(user.role!=='ADMIN'){
+      payload.netAmount=0;
+      payload.travelCost=0;
+      payload.extraCost=0;
+      payload.extraCostDescription=null;
+      payload.billingType='MONTHLY';
+      payload.assignedUserId=user.id;
+    }
 
-  const result=await prisma.$transaction(async(tx)=>{
-    // Blokada zapobiega sytuacji, w której dwie osoby jednocześnie dodadzą tę samą firmę.
-    await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(88442211)');
-
-    const existingRef=await findCompanyByNormalizedName(tx,payload.name);
+    // Najpierw wykorzystujemy już istniejącą firmę po znormalizowanej nazwie.
+    // Celowo bez advisory locka: na Railway potrafił powodować błąd przy
+    // ręcznym dodawaniu firmy z Panelu pracownika.
+    const existingRef=await findCompanyByNormalizedName(prisma,payload.name);
     if(existingRef){
-      const existing=await tx.company.findUnique({
+      const existing=await prisma.company.findUnique({
         where:{id:existingRef.id},
         include:{assignedUser:{select:{id:true,name:true,email:true}}}
       });
-      return {company:existing,reused:true};
+      return Response.json({...existing,_reused:true},{status:200});
     }
 
-    const company=await tx.company.create({
+    const company=await prisma.company.create({
       data:payload,
       include:{assignedUser:{select:{id:true,name:true,email:true}}}
     });
-    await tx.auditLog.create({
-      data:{
-        userId:user.id,
-        action:'CREATE',
-        entity:'Company',
-        entityId:company.id,
-        after:{
-          id:company.id,
-          name:company.name,
-          status:company.status,
-          billingType:company.billingType,
-          assignedUserId:company.assignedUserId||null
-        }
-      }
-    });
-    return {company,reused:false};
-  });
 
-  return Response.json({...result.company,_reused:result.reused},{status:result.reused?200:201});
+    // Audit nie może zablokować utworzenia firmy. Logujemy tylko proste pola.
+    try{
+      await prisma.auditLog.create({
+        data:{
+          userId:user.id,
+          action:'CREATE',
+          entity:'Company',
+          entityId:company.id,
+          after:{
+            id:company.id,
+            name:company.name,
+            status:company.status,
+            billingType:company.billingType,
+            assignedUserId:company.assignedUserId||null
+          }
+        }
+      });
+    }catch(auditError){
+      console.error('Company audit log failed:',auditError);
+    }
+
+    return Response.json({...company,_reused:false},{status:201});
+  }catch(error){
+    console.error('POST /api/companies failed:',error);
+    return Response.json({error:'Nie udało się dodać firmy. Spróbuj ponownie.'},{status:500});
+  }
 }
