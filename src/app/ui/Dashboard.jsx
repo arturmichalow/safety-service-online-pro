@@ -248,7 +248,20 @@ return {
   return (a.name||'').localeCompare(b.name||'','pl');
  })
  },[data.companies,companySearch,companySort,companyStatus]);
- async function saveCompany(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());const saved=await jsonFetch('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setSelectedCompany(saved);formEl.reset();await load();alert('Firma dodana.')}catch(err){alert(err.message)}}
+ async function saveCompany(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());const saved=await jsonFetch('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setSelectedCompany(saved);formEl.reset();await load();alert(saved._reused?'Ta firma już istnieje — otwarto istniejący rekord.':'Firma dodana.')}catch(err){alert(err.message)}}
+ async function mergeDuplicateCompanies(){
+  if(!confirm('Scalić duplikaty firm? Wszystkie wpisy czasu pracy, zlecenia dodatkowe i szybkie notatki zostaną przepięte do jednego rekordu firmy. Operacja nie usuwa historii wpisów.'))return;
+  try{
+   const result=await jsonFetch('/api/companies/dedupe',{method:'POST'});
+   setSelectedCompany(null);
+   await load();
+   if(!result.groups){
+    alert('Nie znaleziono duplikatów firm.');
+    return;
+   }
+   alert(`Scalanie zakończone. Grupy duplikatów: ${result.groups}. Usunięte duplikaty: ${result.removed}. Przepięte wpisy czasu: ${result.workEntriesMoved}. Zlecenia: ${result.extraOrdersMoved}. Notatki: ${result.quickNotesMoved}.`);
+  }catch(err){alert(err.message)}
+ }
  async function updateAllCompanyData(){
   if(companyUpdate.running)return;
   const companies=[...(data.companies||[])];
@@ -281,7 +294,7 @@ return {
  async function updateCompany(e){e.preventDefault();const formEl=e.currentTarget;try{const body=Object.fromEntries(new FormData(formEl).entries());const saved=await jsonFetch('/api/companies/'+selectedCompany.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setSelectedCompany(saved);await load();alert('Dane firmy zapisane.')}catch(err){alert(err.message)}}
  async function deleteCompany(c){if(!c)return;if(!confirm(`Czy na pewno usunąć tę firmę: ${c.name}?`))return;try{await jsonFetch('/api/companies/'+c.id,{method:'DELETE'});setSelectedCompany(null);await load();alert('Firma usunięta.')}catch(err){alert(err.message)}}
  function normalizeCompanyName(value){
-  return String(value||'').toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim();
+  return String(value||'').normalize('NFKC').toLocaleLowerCase('pl-PL').replace(/\s+/g,'');
  }
  function addManualCompanyToForm(){
   const name=String(form.newCompanyName||'').replace(/\s+/g,' ').trim();
@@ -328,11 +341,6 @@ return {
   if(!description)return alert('Wpisz krótki opis wykonywanych prac.');
   if(minutes<=0)return alert('Wpisz prawidłowy czas pracy.');
   if(form.travelEnabled&&travelMinutes<=0)return alert('Wpisz prawidłowy czas dojazdu.');
-
-  const duplicatedManual=manualCompanyNames.find(name=>
-   (data.companies||[]).some(c=>normalizeCompanyName(c.name)===normalizeCompanyName(name))
-  );
-  if(duplicatedManual)return alert(`Firma „${duplicatedManual}” już istnieje w bazie. Wybierz ją z listy.`);
 
   const companyIds=[...selectedIds];
   for(const companyName of manualCompanyNames){
@@ -566,8 +574,6 @@ async function deleteWorkEntry(entry){
  async function addQuickNote(){
  const content=String(quickNoteContent||'').trim();
  const newCompanyName=String(quickNoteNewCompanyName||'').trim();
- const normalizedNewCompany=newCompanyName.toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim();
-
  if(!content){
   return alert('Wpisz treść notatki.');
  }
@@ -576,14 +582,6 @@ async function deleteWorkEntry(entry){
   let companyId=quickNoteCompanyId||form.companyId||null;
 
   if(newCompanyName){
-    const duplicate=(data.companies||[]).find(company=>
-    String(company.name||'').toLocaleLowerCase('pl-PL').replace(/\s+/g,' ').trim()===normalizedNewCompany
-   );
-
-   if(duplicate){
-    return alert('Firma już istnieje w bazie. Wybierz ją z listy.');
-   }
-
    const created=await jsonFetch('/api/companies',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -769,7 +767,7 @@ async function deleteQuickNote(note){
    adminKpis={adminKpis}
   />
 </>}
- {tab==='clients'&&<div className="panel"><div className="grid"><form className="card" onSubmit={saveCompany}><h2>Dodaj firmę</h2><input name="name" placeholder="Nazwa firmy" required/><input name="nip" placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/><input name="address" placeholder="Adres"/><input name="contactPerson" placeholder="Osoba kontaktowa"/><input name="phone" placeholder="Telefon"/><input name="email" placeholder="Email"/><input name="serviceType" placeholder="Typ obsługi"/><select name="assignedUserId"><option value="">Przypisz pracownika</option>{data.users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><select name="status"><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select><select name="billingType"><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select><input name="netAmount" type="number" placeholder="Kwota netto miesięcznie"/><input name="travelCost" type="number" placeholder="Koszt dojazdów"/><input name="extraCost" type="number" placeholder="Dodatkowe koszty"/><input name="extraCostDescription" placeholder="Opis dodatkowych kosztów / uwagi"/><input name="latitude" type="number" step="any" placeholder="Szerokość geograficzna, np. 50.033"/><input name="longitude" type="number" step="any" placeholder="Długość geograficzna, np. 20.217"/><button className="orange">Zapisz</button></form><div className="card"><div className="companyDbHeader"><div><h2>Baza firm</h2><div className="muted">Jednym kliknięciem pobierz adresy i współrzędne na podstawie nazw firm.</div></div><button type="button" className="orange companyUpdateButton" onClick={updateAllCompanyData} disabled={companyUpdate.running}>{companyUpdate.running?`Aktualizuję ${companyUpdate.current}/${companyUpdate.total}`:'🔄 Pobierz / aktualizuj dane firm'}</button></div>{companyUpdate.running&&<div className="companyUpdateBox"><div className="companyUpdateProgress"><span style={{width:`${companyUpdate.total?Math.round(companyUpdate.current/companyUpdate.total*100):0}%`}}></span></div><div><b>{companyUpdate.currentName||'Przygotowanie...'}</b></div><div className="muted">Zaktualizowano: {companyUpdate.updated} · Błędy: {companyUpdate.failed}</div></div>}{!companyUpdate.running&&companyUpdate.errors.length>0&&<details className="companyUpdateErrors"><summary>Ostatni raport: {companyUpdate.updated} zaktualizowano, {companyUpdate.failed} nie znaleziono</summary><ul>{companyUpdate.errors.map((item,index)=><li key={`${item.name}-${index}`}><b>{item.name}</b>: {item.error}</li>)}</ul></details>}<div className="filterBar"><input placeholder="Szukaj firmy..." value={companySearch} onChange={e=>setCompanySearch(e.target.value)}/><select value={companySort} onChange={e=>setCompanySort(e.target.value)}><option value="name_asc">Nazwa A-Z</option><option value="name_desc">Nazwa Z-A</option><option value="money_desc">Największa kwota</option><option value="money_asc">Najmniejsza kwota</option></select><select value={companyStatus} onChange={e=>setCompanyStatus(e.target.value)}><option value="ALL">Wszystkie statusy</option><option value="ACTIVE">Aktywne</option><option value="PAUSED">Zawieszone</option><option value="INACTIVE">Nieaktywne</option></select></div><div className="muted">Widoczne firmy: {filteredCompanies.length} / {data.companies.length}</div><div className="tableWrap"><table><thead><tr><th>Status</th><th>Firma</th><th>NIP</th><th>Pracownik</th><th>Kwota miesięczna</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{filteredCompanies.map(c=><tr className="clickable" key={c.id} onClick={()=>setSelectedCompany(c)}><td><span className={'status '+c.status}></span></td><td>{c.name}</td><td>{c.nip||'-'}</td><td>{c.assignedUser?.name||'-'}</td><td>{money(c.netAmount)}</td><td>{c.extraCostDescription||'-'}</td><td><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();setSelectedCompany(c)}}>✏️</button><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();deleteCompany(c)}}>🗑️</button></td></tr>)}</tbody></table></div>{selectedCompany&&<CompanyDetails key={selectedCompany.id} company={selectedCompany} users={data.users} orders={data.extraOrders.filter(o=>o.companyId===selectedCompany.id)} onSubmit={updateCompany} onDelete={()=>deleteCompany(selectedCompany)}/>}</div></div></div>}
+ {tab==='clients'&&<div className="panel"><div className="grid"><form className="card" onSubmit={saveCompany}><h2>Dodaj firmę</h2><input name="name" placeholder="Nazwa firmy" required/><input name="nip" placeholder="NIP" onBlur={e=>autofillByNip(e.currentTarget.form)}/><input name="address" placeholder="Adres"/><input name="contactPerson" placeholder="Osoba kontaktowa"/><input name="phone" placeholder="Telefon"/><input name="email" placeholder="Email"/><input name="serviceType" placeholder="Typ obsługi"/><select name="assignedUserId"><option value="">Przypisz pracownika</option>{data.users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><select name="status"><option value="ACTIVE">aktywna</option><option value="PAUSED">zawieszona</option><option value="INACTIVE">nieaktywna</option></select><select name="billingType"><option value="MONTHLY">miesięczne</option><option value="ONE_TIME">jednorazowe</option><option value="HOURLY">godzinowe</option></select><input name="netAmount" type="number" placeholder="Kwota netto miesięcznie"/><input name="travelCost" type="number" placeholder="Koszt dojazdów"/><input name="extraCost" type="number" placeholder="Dodatkowe koszty"/><input name="extraCostDescription" placeholder="Opis dodatkowych kosztów / uwagi"/><input name="latitude" type="number" step="any" placeholder="Szerokość geograficzna, np. 50.033"/><input name="longitude" type="number" step="any" placeholder="Długość geograficzna, np. 20.217"/><button className="orange">Zapisz</button></form><div className="card"><div className="companyDbHeader"><div><h2>Baza firm</h2><div className="muted">Jednym kliknięciem pobierz adresy i współrzędne na podstawie nazw firm.</div></div><div className="row" style={{gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}><button type="button" className="light companyUpdateButton" onClick={mergeDuplicateCompanies}>🧹 Scal duplikaty firm</button><button type="button" className="orange companyUpdateButton" onClick={updateAllCompanyData} disabled={companyUpdate.running}>{companyUpdate.running?`Aktualizuję ${companyUpdate.current}/${companyUpdate.total}`:'🔄 Pobierz / aktualizuj dane firm'}</button></div></div>{companyUpdate.running&&<div className="companyUpdateBox"><div className="companyUpdateProgress"><span style={{width:`${companyUpdate.total?Math.round(companyUpdate.current/companyUpdate.total*100):0}%`}}></span></div><div><b>{companyUpdate.currentName||'Przygotowanie...'}</b></div><div className="muted">Zaktualizowano: {companyUpdate.updated} · Błędy: {companyUpdate.failed}</div></div>}{!companyUpdate.running&&companyUpdate.errors.length>0&&<details className="companyUpdateErrors"><summary>Ostatni raport: {companyUpdate.updated} zaktualizowano, {companyUpdate.failed} nie znaleziono</summary><ul>{companyUpdate.errors.map((item,index)=><li key={`${item.name}-${index}`}><b>{item.name}</b>: {item.error}</li>)}</ul></details>}<div className="filterBar"><input placeholder="Szukaj firmy..." value={companySearch} onChange={e=>setCompanySearch(e.target.value)}/><select value={companySort} onChange={e=>setCompanySort(e.target.value)}><option value="name_asc">Nazwa A-Z</option><option value="name_desc">Nazwa Z-A</option><option value="money_desc">Największa kwota</option><option value="money_asc">Najmniejsza kwota</option></select><select value={companyStatus} onChange={e=>setCompanyStatus(e.target.value)}><option value="ALL">Wszystkie statusy</option><option value="ACTIVE">Aktywne</option><option value="PAUSED">Zawieszone</option><option value="INACTIVE">Nieaktywne</option></select></div><div className="muted">Widoczne firmy: {filteredCompanies.length} / {data.companies.length}</div><div className="tableWrap"><table><thead><tr><th>Status</th><th>Firma</th><th>NIP</th><th>Pracownik</th><th>Kwota miesięczna</th><th>Uwagi</th><th>Akcje</th></tr></thead><tbody>{filteredCompanies.map(c=><tr className="clickable" key={c.id} onClick={()=>setSelectedCompany(c)}><td><span className={'status '+c.status}></span></td><td>{c.name}</td><td>{c.nip||'-'}</td><td>{c.assignedUser?.name||'-'}</td><td>{money(c.netAmount)}</td><td>{c.extraCostDescription||'-'}</td><td><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();setSelectedCompany(c)}}>✏️</button><button type="button" className="light iconBtn" onClick={(e)=>{e.stopPropagation();deleteCompany(c)}}>🗑️</button></td></tr>)}</tbody></table></div>{selectedCompany&&<CompanyDetails key={selectedCompany.id} company={selectedCompany} users={data.users} orders={data.extraOrders.filter(o=>o.companyId===selectedCompany.id)} onSubmit={updateCompany} onDelete={()=>deleteCompany(selectedCompany)}/>}</div></div></div>}
  {tab==='employees'&&<div className="panel"><h1>Baza pracowników</h1><div className="employeeGrid">{data.users.map(u=><EmployeeCard key={u.id} u={u} onEdit={()=>{setTab('users');setEditUser(u)}} onDelete={()=>deleteUser(u)}/>)}</div></div>}
  {tab==='workerStats'&&<WorkerStatsPanel data={data} reload={load}/>}
   {tab==='work'&&
