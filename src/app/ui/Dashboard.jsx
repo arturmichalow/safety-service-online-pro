@@ -334,11 +334,6 @@ return {
   );
   if(duplicatedManual)return alert(`Firma „${duplicatedManual}” już istnieje w bazie. Wybierz ją z listy.`);
 
-  if(form.billingMode==='ONE_TIME'){
-   if(netAmount<=0)return alert('Wpisz kwotę netto za zlecenie większą od zera.');
-   if(extraCost>0&&!String(form.extraCostName||'').trim())return alert('Wpisz nazwę dodatkowego kosztu.');
-  }
-
   const companyIds=[...selectedIds];
   for(const companyName of manualCompanyNames){
    const created=await jsonFetch('/api/companies',{
@@ -347,7 +342,7 @@ return {
     body:JSON.stringify({
      name:companyName,
      status:'ACTIVE',
-     billingType:form.billingMode==='ONE_TIME'?'ONE_TIME':'MONTHLY',
+     billingType:'MONTHLY',
      netAmount:0,
      travelCost:0,
      extraCost:0
@@ -359,46 +354,22 @@ return {
   const dividedMinutes=splitMinutesBetweenCompanies(minutes,companyIds.length);
   const dividedTravelMinutes=splitMinutesBetweenCompanies(travelMinutes,companyIds.length);
 
-  if(form.billingMode==='MONTHLY'){
-   await Promise.all(companyIds.map((companyId,index)=>jsonFetch('/api/work',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-     date:form.date,
-     companyId,
-     orderNumber:form.orderNumber||null,
-     type:resolvedType,
-     title:description,
-     description,
-     minutes:dividedMinutes[index],
-     travelMinutes:dividedTravelMinutes[index],
-     additionalCost:0,
-     additionalCostDescription:null
-    })
-   })));
-  }else{
-   const costDescription=String(form.extraCostName||'').trim()||null;
-
-   await Promise.all(companyIds.map((companyId,index)=>jsonFetch('/api/extra-orders',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-     companyId,
-     date:form.date,
-     title:description,
-     type:resolvedType,
-     description,
-     netAmount,
-     travelCost:0,
-     travelMinutes:dividedTravelMinutes[index],
-     extraCost,
-     extraCostDescription:costDescription,
-     minutes:dividedMinutes[index],
-     orderNumber:form.orderNumber||null,
-     status:'DONE'
-    })
-   })));
-  }
+  await Promise.all(companyIds.map((companyId,index)=>jsonFetch('/api/work',{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({
+    date:form.date,
+    companyId,
+    orderNumber:null,
+    type:resolvedType,
+    title:description,
+    description,
+    minutes:dividedMinutes[index],
+    travelMinutes:dividedTravelMinutes[index],
+    additionalCost:0,
+    additionalCostDescription:null
+   })
+  })));
 
   setForm({
    date:new Date().toISOString().slice(0,10),
@@ -936,11 +907,7 @@ async function deleteQuickNote(note){
       </div>
      </Field>}
 
-     <Field label="4. Numer zlecenia / PO">
-      <input placeholder="opcjonalnie" value={form.orderNumber} onChange={e=>setForm({...form,orderNumber:e.target.value})}/>
-     </Field>
-
-     <Field label="5. Wybór czynności">
+     <Field label="4. Wybór czynności">
       <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
        <option value="szkolenie">Szkolenie</option>
        <option value="audyt">Audyt</option>
@@ -954,11 +921,11 @@ async function deleteQuickNote(note){
       <input placeholder="Wpisz nazwę czynności" value={form.customType||''} onChange={e=>setForm({...form,customType:e.target.value})}/>
      </Field>}
 
-     <Field label="6. Krótki opis wykonywanych prac">
+     <Field label="5. Krótki opis wykonywanych prac">
       <textarea placeholder="Krótko opisz wykonane prace" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/>
      </Field>
 
-     <Field label="7. Czas pracy">
+     <Field label="6. Czas pracy">
       <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:12,alignItems:'center'}}>
        <input placeholder="np. 2:30, 2h 30m, 150m" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/>
        <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}}>
@@ -970,32 +937,6 @@ async function deleteQuickNote(note){
        <input placeholder="Czas dojazdu, np. 0:45, 45m" value={form.travelTime} onChange={e=>setForm({...form,travelTime:e.target.value})}/>
       </div>}
      </Field>
-
-     {!editingEntry&&<div className="card" style={{margin:0,padding:18}}>
-      <h2 style={{marginTop:0}}>8. Typ rozliczenia</h2>
-      <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
-       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
-        <input type="radio" name="billingMode" checked={form.billingMode==='MONTHLY'} onChange={()=>setForm({...form,billingMode:'MONTHLY',netAmount:'',additionalCost:'',extraCostName:'',additionalCostDescription:''})} style={{width:'auto'}}/>
-        Obsługa miesięczna
-       </label>
-       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
-        <input type="radio" name="billingMode" checked={form.billingMode==='ONE_TIME'} onChange={()=>setForm({...form,billingMode:'ONE_TIME'})} style={{width:'auto'}}/>
-        Kwota netto za zlecenie
-       </label>
-      </div>
-     </div>}
-
-     {(!editingEntry||editingEntry.entryKind==='EXTRA')&&form.billingMode==='ONE_TIME'&&<>
-      <Field label="9. Kwota netto za zlecenie">
-       <input type="number" min="0" step="0.01" placeholder="np. 1500" value={form.netAmount} onChange={e=>setForm({...form,netAmount:e.target.value})}/>
-      </Field>
-      <Field label="Kwota netto dodatkowego kosztu">
-       <input type="number" min="0" step="0.01" placeholder="np. 500" value={form.additionalCost} onChange={e=>setForm({...form,additionalCost:e.target.value})}/>
-      </Field>
-      <Field label="10. Nazwa dodatkowego kosztu">
-       <input placeholder="np. ratownik medyczny" value={form.extraCostName||''} onChange={e=>setForm({...form,extraCostName:e.target.value})}/>
-      </Field>
-     </>}
 
      {!editingEntry&&<button type="button" className="orange" onClick={addWork}>
       Dodaj wpis
