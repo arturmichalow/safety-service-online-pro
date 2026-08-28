@@ -650,7 +650,7 @@ async function deleteWorkEntry(entry){
  }
 }
  function moveQuickNoteToWork(note){
- setEditingWorkEntry(null);
+ setEditingEntry(null);
 
  const noteCompanyId=note.companyId||note.company?.id||'';
 
