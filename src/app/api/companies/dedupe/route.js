@@ -18,15 +18,13 @@ function companyScore(company){
   if(numberValue(company.travelCost)!==0)score+=3;
   if(numberValue(company.extraCost)!==0)score+=3;
   if(valuePresent(company.extraCostDescription))score+=2;
-  score+=Number(company._count?.workEntries||0)*0.01;
-  score+=Number(company._count?.extraOrders||0)*0.01;
-  score+=Number(company._count?.quickNotes||0)*0.01;
   return score;
 }
 
 function mergedCompanyData(canonical, group){
   const merged={};
   const fillFields=['nip','address','contactPerson','phone','email','serviceType','orderNumber','assignedUserId','latitude','longitude','regon','krs','dataSource','geocodedAt','extraCostDescription'];
+
   for(const key of fillFields){
     if(valuePresent(canonical[key]))continue;
     const source=group.find(item=>valuePresent(item[key]));
@@ -42,85 +40,98 @@ function mergedCompanyData(canonical, group){
   return merged;
 }
 
-function toJson(value){
-  return JSON.parse(JSON.stringify(value));
-}
-
 export async function POST(){
-  const user=await currentUser();
-  if(!user||user.role!=='ADMIN')return Response.json({error:'Forbidden'},{status:403});
+  const user=currentUser();
+  if(!user||user.role!=='ADMIN'){
+    return Response.json({error:'Brak uprawnień do scalania firm.'},{status:403});
+  }
 
-  const result=await prisma.$transaction(async(tx)=>{
-    await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(88442211)');
+  try{
+    const result=await prisma.$transaction(async(tx)=>{
+      // Krótka blokada tylko na czas operacji, żeby dwa scalania nie uruchomiły się równocześnie.
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(88442211)');
 
-    const companies=await tx.company.findMany({
-      include:{_count:{select:{workEntries:true,extraOrders:true,quickNotes:true}}},
-      orderBy:{createdAt:'asc'}
-    });
+      const companies=await tx.company.findMany({orderBy:{createdAt:'asc'}});
+      const groups=new Map();
 
-    const groups=new Map();
-    for(const company of companies){
-      const key=normalizeCompanyName(company.name);
-      if(!key)continue;
-      if(!groups.has(key))groups.set(key,[]);
-      groups.get(key).push(company);
-    }
-
-    const duplicateGroups=[...groups.values()].filter(group=>group.length>1);
-    let removed=0;
-    let workEntriesMoved=0;
-    let extraOrdersMoved=0;
-    let quickNotesMoved=0;
-    const merged=[];
-
-    for(const group of duplicateGroups){
-      const sorted=[...group].sort((a,b)=>{
-        const diff=companyScore(b)-companyScore(a);
-        if(diff!==0)return diff;
-        return new Date(a.createdAt)-new Date(b.createdAt);
-      });
-      const canonical=sorted[0];
-      const duplicates=sorted.slice(1);
-      const duplicateIds=duplicates.map(item=>item.id);
-      const mergeData=mergedCompanyData(canonical,group);
-
-      const workResult=await tx.workEntry.updateMany({where:{companyId:{in:duplicateIds}},data:{companyId:canonical.id}});
-      const extraResult=await tx.extraOrder.updateMany({where:{companyId:{in:duplicateIds}},data:{companyId:canonical.id}});
-      const noteResult=await tx.quickNote.updateMany({where:{companyId:{in:duplicateIds}},data:{companyId:canonical.id}});
-
-      if(Object.keys(mergeData).length){
-        await tx.company.update({where:{id:canonical.id},data:mergeData});
+      for(const company of companies){
+        const key=normalizeCompanyName(company.name);
+        if(!key)continue;
+        if(!groups.has(key))groups.set(key,[]);
+        groups.get(key).push(company);
       }
 
-      await tx.company.deleteMany({where:{id:{in:duplicateIds}}});
+      const duplicateGroups=[...groups.values()].filter(group=>group.length>1);
+      let removed=0;
+      let workEntriesMoved=0;
+      let extraOrdersMoved=0;
+      let quickNotesMoved=0;
+      const merged=[];
 
-      await tx.auditLog.create({
-        data:{
-          userId:user.id,
-          action:'MERGE_DUPLICATES',
-          entity:'Company',
-          entityId:canonical.id,
-          before:toJson(group),
-          after:{
-            canonicalId:canonical.id,
-            canonicalName:canonical.name,
-            removedIds:duplicateIds,
-            workEntriesMoved:workResult.count,
-            extraOrdersMoved:extraResult.count,
-            quickNotesMoved:noteResult.count
-          }
+      for(const group of duplicateGroups){
+        const sorted=[...group].sort((a,b)=>{
+          const diff=companyScore(b)-companyScore(a);
+          if(diff!==0)return diff;
+          return new Date(a.createdAt)-new Date(b.createdAt);
+        });
+
+        const canonical=sorted[0];
+        const duplicates=sorted.slice(1);
+        const duplicateIds=duplicates.map(item=>item.id);
+        const mergeData=mergedCompanyData(canonical,group);
+
+        const workResult=await tx.workEntry.updateMany({
+          where:{companyId:{in:duplicateIds}},
+          data:{companyId:canonical.id}
+        });
+        const extraResult=await tx.extraOrder.updateMany({
+          where:{companyId:{in:duplicateIds}},
+          data:{companyId:canonical.id}
+        });
+        const noteResult=await tx.quickNote.updateMany({
+          where:{companyId:{in:duplicateIds}},
+          data:{companyId:canonical.id}
+        });
+
+        if(Object.keys(mergeData).length){
+          await tx.company.update({where:{id:canonical.id},data:mergeData});
         }
-      });
 
-      removed+=duplicates.length;
-      workEntriesMoved+=workResult.count;
-      extraOrdersMoved+=extraResult.count;
-      quickNotesMoved+=noteResult.count;
-      merged.push({name:canonical.name,removed:duplicates.length});
-    }
+        await tx.company.deleteMany({where:{id:{in:duplicateIds}}});
 
-    return {groups:duplicateGroups.length,removed,workEntriesMoved,extraOrdersMoved,quickNotesMoved,merged};
-  },{timeout:30000});
+        // Zapisujemy lekki log bez całych rekordów Prisma/Decimal, żeby nie wywalać pola JSON.
+        await tx.auditLog.create({
+          data:{
+            userId:user.id,
+            action:'MERGE_DUPLICATES',
+            entity:'Company',
+            entityId:canonical.id,
+            after:{
+              canonicalId:canonical.id,
+              canonicalName:canonical.name,
+              removedIds:duplicateIds,
+              workEntriesMoved:workResult.count,
+              extraOrdersMoved:extraResult.count,
+              quickNotesMoved:noteResult.count
+            }
+          }
+        });
 
-  return Response.json(result);
+        removed+=duplicates.length;
+        workEntriesMoved+=workResult.count;
+        extraOrdersMoved+=extraResult.count;
+        quickNotesMoved+=noteResult.count;
+        merged.push({name:canonical.name,removed:duplicates.length});
+      }
+
+      return {groups:duplicateGroups.length,removed,workEntriesMoved,extraOrdersMoved,quickNotesMoved,merged};
+    },{timeout:120000});
+
+    return Response.json(result);
+  }catch(error){
+    console.error('Company dedupe error:',error);
+    return Response.json({
+      error:`Nie udało się scalić duplikatów firm: ${error?.message||'nieznany błąd'}`
+    },{status:500});
+  }
 }
